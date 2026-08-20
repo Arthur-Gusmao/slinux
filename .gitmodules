@@ -10,3 +10,6 @@
 [submodule "userland/sbase"]
 	path = userland/sbase
 	url = git@github.com:Arthur-Gusmao/sbase.git
+[submodule "userland/ubase"]
+	path = userland/ubase
+	url = git@github.com:Arthur-Gusmao/ubase.git
