@@ -4,3 +4,6 @@
 [submodule "init/sinit"]
 	path = init/sinit
 	url = git@github.com:Arthur-Gusmao/sinit.git
+[submodule "userland/9base"]
+	path = userland/9base
+	url = git@github.com:Arthur-Gusmao/9base.git
