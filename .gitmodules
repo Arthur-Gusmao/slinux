@@ -1,3 +1,6 @@
 [submodule "kernel/linux"]
 	path = kernel/linux
 	url = https://github.com/torvalds/linux
+[submodule "init/sinit"]
+	path = init/sinit
+	url = git@github.com:Arthur-Gusmao/sinit.git
