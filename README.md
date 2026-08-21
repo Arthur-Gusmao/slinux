@@ -25,6 +25,10 @@ philosophy where practical: small tools, simple code, sane defaults.
 | zlib + minigzip | upstream | gzip/gunzip |
 | bearssl | upstream | tls library; `brssl` tool and https `wget` (in sbase) |
 | netbsd-curses | upstream | curses/terminfo libraries, `tput` `tset` `tabs` |
+| sdhcp | upstream | dhcp client, configured from rc.init |
+| e2fsprogs | upstream | static `mkfs.ext4`, `fsck.ext4`, `tune2fs` |
+| dropbear | upstream | ssh server + `dbclient` (`ssh`) |
+| ubase extras | ours | `ifconfig`, `rdate` (sntp), `syslogd`, `logger` |
 | limine | host package | uefi bootloader |
 
 everything is cross-compiled with clang against a private sysroot

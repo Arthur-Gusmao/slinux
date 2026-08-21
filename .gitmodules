@@ -37,3 +37,9 @@
 [submodule "userland/sdhcp"]
 	path = userland/sdhcp
 	url = https://git.2f30.org/sdhcp
+[submodule "userland/e2fsprogs"]
+	path = userland/e2fsprogs
+	url = https://git.kernel.org/pub/scm/fs/ext2/e2fsprogs.git
+[submodule "userland/dropbear"]
+	path = userland/dropbear
+	url = https://github.com/mkj/dropbear.git

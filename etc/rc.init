@@ -12,6 +12,9 @@ mountpoint -q /dev  || mount -t devtmpfs dev /dev
 mkdir -p /var/run /var/log
 chmod 1777 /tmp
 
+# system logging (syslogd(8) daemonizes)
+syslogd
+
 hostname "$(cat /etc/hostname)"
 
 # network: loopback, then dhcp on the wired interface (sdhcp(8)
@@ -19,6 +22,15 @@ hostname "$(cat /etc/hostname)"
 ifconfig lo 127.0.0.1 up
 ifconfig eth0 up
 sdhcp eth0
+
+# ssh server: -R generates host keys on first connection.
+# note: password auth requires a non-empty root password; set one with
+# passwd(1) or install a public key in /root/.ssh/authorized_keys
+if [ -x /bin/dropbear ]; then
+	mkdir -p /etc/dropbear /root/.ssh
+	chmod 700 /root/.ssh
+	dropbear -R
+fi
 
 cat /etc/motd
 

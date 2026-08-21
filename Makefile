@@ -22,10 +22,12 @@ ZLIB_DIR    := userland/zlib
 BEARSSL_DIR := userland/bearssl
 CURSES_DIR  := userland/netbsd-curses
 SDHCP_DIR   := userland/sdhcp
+E2FSPROGS_DIR := userland/e2fsprogs
+DROPBEAR_DIR  := userland/dropbear
 ZLIB_SRCS  := adler32 compress crc32 deflate gzclose gzlib gzread gzwrite \
 	infback inffast inflate inftrees trees uncompr zutil
 
-.PHONY: all musl headers bearssl curses sdhcp userland rootfs initramfs run image run-image kernel clean help
+.PHONY: all musl headers bearssl curses sdhcp e2fsprogs dropbear userland rootfs initramfs run image run-image kernel clean help
 
 all: initramfs
 
@@ -39,6 +41,8 @@ help:
 	@echo "  make bearssl     build bearssl (lib into sysroot, brssl)"
 	@echo "  make curses      build netbsd-curses (libs, tput/tset/tabs)"
 	@echo "  make sdhcp       build sdhcp (dhcp client)"
+	@echo "  make e2fsprogs   build mke2fs/e2fsck/tune2fs (static)"
+	@echo "  make dropbear    build dropbear ssh server + dbclient"
 	@echo "  make rootfs      populate rootfs/ with binaries and etc files"
 	@echo "  make initramfs   pack rootfs/ into slinux.cpio.gz"
 	@echo "  make kernel      build the linux kernel"
@@ -103,7 +107,41 @@ sdhcp: musl
 	mkdir -p $(ROOTFS)/bin
 	install -m755 $(SDHCP_DIR)/sdhcp $(ROOTFS)/bin/sdhcp
 
-userland: musl headers bearssl curses sdhcp
+e2fsprogs: musl
+	@test -d $(E2FSPROGS_DIR) || { \
+		echo "$(E2FSPROGS_DIR) missing: add the submodule first"; exit 1; }
+	cd $(E2FSPROGS_DIR) && CC='$(CC)' ./configure --prefix=/usr \
+		--disable-nls --disable-shared --disable-e2scrub \
+		--disable-uuidd --disable-profile LDFLAGS='-s -static'
+	$(MAKE) -C $(E2FSPROGS_DIR) libs progs
+	mkdir -p $(ROOTFS)/bin $(ROOTFS)/etc
+	install -m755 $(E2FSPROGS_DIR)/misc/mke2fs $(E2FSPROGS_DIR)/misc/tune2fs \
+		$(E2FSPROGS_DIR)/misc/dumpe2fs $(E2FSPROGS_DIR)/misc/logsave \
+		$(E2FSPROGS_DIR)/e2fsck/e2fsck $(ROOTFS)/bin/
+	install -m644 $(E2FSPROGS_DIR)/misc/mke2fs.conf $(ROOTFS)/etc/
+	for t in ext2 ext3 ext4; do \
+		ln -sf mke2fs $(ROOTFS)/bin/mkfs.$$t; \
+		ln -sf e2fsck $(ROOTFS)/bin/fsck.$$t; done
+
+dropbear: musl
+	@test -d $(DROPBEAR_DIR) || { \
+		echo "$(DROPBEAR_DIR) missing: add the submodule first"; exit 1; }
+	rm -f $(ZLIB_DIR)/libz.a
+	@for f in $(ZLIB_SRCS); do \
+		$(CC) -Os -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN \
+			-c $(ZLIB_DIR)/$$f.c -o $(ZLIB_DIR)/$$f.o || exit; done
+	llvm-ar rcs $(ZLIB_DIR)/libz.a $(addprefix $(ZLIB_DIR)/,$(ZLIB_SRCS:=.o))
+	cd $(DROPBEAR_DIR) && CC='$(CC)' ./configure --prefix=/usr \
+		CFLAGS='-Os -I$(ROOT)/$(ZLIB_DIR)' \
+		LDFLAGS='-s -static -L$(ROOT)/$(ZLIB_DIR)'
+	$(MAKE) -C $(DROPBEAR_DIR) MULTI=1
+	mkdir -p $(ROOTFS)/bin
+	install -m755 $(DROPBEAR_DIR)/dropbearmulti $(ROOTFS)/bin/dropbearmulti
+	for t in dropbear dbclient dropbearkey scp; do \
+		ln -sf dropbearmulti $(ROOTFS)/bin/$$t; done
+	ln -sf dbclient $(ROOTFS)/bin/ssh
+
+userland: musl headers bearssl curses sdhcp e2fsprogs dropbear
 	$(MAKE) -C $(INIT_DIRS) CC='$(CC)'
 	$(MAKE) -C $(INIT_DIRS) install DESTDIR=$(ROOTFS) PREFIX=/
 	mv -f $(ROOTFS)/bin/sinit $(ROOTFS)/bin/init
@@ -135,7 +173,7 @@ userland: musl headers bearssl curses sdhcp
 rootfs: userland
 	mkdir -p $(ROOTFS)/bin $(ROOTFS)/sbin $(ROOTFS)/etc
 	mkdir -p $(ROOTFS)/dev $(ROOTFS)/proc $(ROOTFS)/sys $(ROOTFS)/tmp
-	mkdir -p $(ROOTFS)/root $(ROOTFS)/var/run $(ROOTFS)/var/log
+	mkdir -p $(ROOTFS)/root $(ROOTFS)/mnt $(ROOTFS)/var/run $(ROOTFS)/var/log
 	chmod 1777 $(ROOTFS)/tmp
 	install -m644 etc/passwd etc/group etc/hostname etc/motd etc/fstab \
 		etc/resolv.conf etc/hosts etc/services $(ROOTFS)/etc/
