@@ -14,6 +14,12 @@ chmod 1777 /tmp
 
 hostname "$(cat /etc/hostname)"
 
+# network: loopback, then dhcp on the wired interface (sdhcp(8)
+# daemonizes and renews the lease; it also writes /etc/resolv.conf)
+ifconfig lo 127.0.0.1 up
+ifconfig eth0 up
+sdhcp eth0
+
 cat /etc/motd
 
 # console login, restarted automatically if the shell exits

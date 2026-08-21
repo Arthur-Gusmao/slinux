@@ -34,3 +34,6 @@
 [submodule "userland/netbsd-curses"]
 	path = userland/netbsd-curses
 	url = https://github.com/sabotage-linux/netbsd-curses.git
+[submodule "userland/sdhcp"]
+	path = userland/sdhcp
+	url = https://git.2f30.org/sdhcp

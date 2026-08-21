@@ -9,6 +9,11 @@ IMAGE     := $(ROOT)/slinux.img
 
 CC := clang --target=x86_64-linux-musl --sysroot=$(SYSROOT)
 
+# reproducible builds: fix timestamps for the kernel and anything that
+# honors SOURCE_DATE_EPOCH (https://reproducible-builds.org/docs/source-date-epoch/)
+SOURCE_DATE_EPOCH := $(shell git log -1 --format=%ct 2>/dev/null || echo 1704067200)
+export SOURCE_DATE_EPOCH
+
 INIT_DIRS   := init/sinit
 USER_DIRS   := userland/sbase userland/ubase userland/9base
 SHELL_DIR   := shell/dash
@@ -16,10 +21,11 @@ VI_DIR      := userland/neatvi
 ZLIB_DIR    := userland/zlib
 BEARSSL_DIR := userland/bearssl
 CURSES_DIR  := userland/netbsd-curses
+SDHCP_DIR   := userland/sdhcp
 ZLIB_SRCS  := adler32 compress crc32 deflate gzclose gzlib gzread gzwrite \
 	infback inffast inflate inftrees trees uncompr zutil
 
-.PHONY: all musl headers bearssl curses userland rootfs initramfs run image run-image kernel clean help
+.PHONY: all musl headers bearssl curses sdhcp userland rootfs initramfs run image run-image kernel clean help
 
 all: initramfs
 
@@ -32,6 +38,7 @@ help:
 	@echo "  make userland    build and install every userland tool"
 	@echo "  make bearssl     build bearssl (lib into sysroot, brssl)"
 	@echo "  make curses      build netbsd-curses (libs, tput/tset/tabs)"
+	@echo "  make sdhcp       build sdhcp (dhcp client)"
 	@echo "  make rootfs      populate rootfs/ with binaries and etc files"
 	@echo "  make initramfs   pack rootfs/ into slinux.cpio.gz"
 	@echo "  make kernel      build the linux kernel"
@@ -87,7 +94,16 @@ curses: musl
 	install -m644 $(CURSES_DIR)/terminfo/terminfo.cdb \
 		$(ROOTFS)/usr/share/terminfo.cdb
 
-userland: musl headers bearssl curses
+sdhcp: musl
+	@test -d $(SDHCP_DIR) || { \
+		echo "$(SDHCP_DIR) missing: add the submodule first"; exit 1; }
+	$(MAKE) -C $(SDHCP_DIR) CC='$(CC)' LD='$(CC)' AR=llvm-ar \
+		RANLIB=llvm-ranlib CPPFLAGS='-D_DEFAULT_SOURCE' \
+		CFLAGS='-Os' LDFLAGS='-s -static' all
+	mkdir -p $(ROOTFS)/bin
+	install -m755 $(SDHCP_DIR)/sdhcp $(ROOTFS)/bin/sdhcp
+
+userland: musl headers bearssl curses sdhcp
 	$(MAKE) -C $(INIT_DIRS) CC='$(CC)'
 	$(MAKE) -C $(INIT_DIRS) install DESTDIR=$(ROOTFS) PREFIX=/
 	mv -f $(ROOTFS)/bin/sinit $(ROOTFS)/bin/init
@@ -122,7 +138,7 @@ rootfs: userland
 	mkdir -p $(ROOTFS)/root $(ROOTFS)/var/run $(ROOTFS)/var/log
 	chmod 1777 $(ROOTFS)/tmp
 	install -m644 etc/passwd etc/group etc/hostname etc/motd etc/fstab \
-		etc/resolv.conf etc/hosts $(ROOTFS)/etc/
+		etc/resolv.conf etc/hosts etc/services $(ROOTFS)/etc/
 	mkdir -p $(ROOTFS)/etc/ssl
 	@if [ -f /etc/ssl/certs/ca-certificates.crt ]; then \
 		install -m644 /etc/ssl/certs/ca-certificates.crt \
@@ -138,7 +154,9 @@ rootfs: userland
 	ln -sf /bin/init $(ROOTFS)/init
 
 initramfs: rootfs
-	(cd $(ROOTFS) && find . -print0 | cpio --null -o -H newc --quiet) | gzip -9 > $(INITRAMFS)
+	find $(ROOTFS) -print0 | xargs -0 touch -h -d @$(SOURCE_DATE_EPOCH)
+	(cd $(ROOTFS) && find . -print0 | LC_ALL=C sort -z | \
+		cpio --null -o -H newc --quiet --reproducible) | gzip -9n > $(INITRAMFS)
 
 run: initramfs
 	qemu-system-x86_64 -m 256M -kernel $(BZIMAGE) -initrd $(INITRAMFS) \
@@ -155,6 +173,7 @@ run-image: image
 		-drive file=$(IMAGE),format=raw,if=virtio -nographic
 
 kernel:
+	cp kernel/config kernel/linux/.config
 	$(MAKE) -C kernel/linux olddefconfig all
 
 clean:
