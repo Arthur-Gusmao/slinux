@@ -17,9 +17,30 @@ ZLIB_DIR   := userland/zlib
 ZLIB_SRCS  := adler32 compress crc32 deflate gzclose gzlib gzread gzwrite \
 	infback inffast inflate inftrees trees uncompr zutil
 
-.PHONY: all musl headers userland rootfs initramfs run kernel clean
+.PHONY: all musl headers userland rootfs initramfs run image run-image kernel clean help
 
 all: initramfs
+
+help:
+	@echo "slinux $(shell git describe --tags --always 2>/dev/null)"
+	@echo
+	@echo "build targets:"
+	@echo "  make musl        build musl into out/sysroot"
+	@echo "  make headers     install kernel uapi headers into out/sysroot"
+	@echo "  make userland    build and install every userland tool"
+	@echo "  make rootfs      populate rootfs/ with binaries and etc files"
+	@echo "  make initramfs   pack rootfs/ into slinux.cpio.gz"
+	@echo "  make kernel      build the linux kernel"
+	@echo "  make image       build slinux.img (gpt: esp + ext4 root)"
+	@echo
+	@echo "run targets:"
+	@echo "  make run         boot the initramfs in qemu, serial console"
+	@echo "  make run-image   boot slinux.img in qemu with uefi (ovmf)"
+	@echo
+	@echo "misc targets:"
+	@echo "  make clean       remove build artifacts"
+	@echo
+	@echo "installer: ./install.sh <image-file|block-device> [size-mib]"
 
 GCC_MUSL_DIR := $(firstword $(foreach d,$(wildcard /usr/lib/gcc/x86_64-linux-musl/*),$(d)))
 
