@@ -23,6 +23,8 @@ philosophy where practical: small tools, simple code, sane defaults.
 | dash | upstream | `/bin/sh` |
 | neatvi | upstream | vi editor |
 | zlib + minigzip | upstream | gzip/gunzip |
+| bearssl | upstream | tls library; `brssl` tool and https `wget` (in sbase) |
+| netbsd-curses | upstream | curses/terminfo libraries, `tput` `tset` `tabs` |
 | limine | host package | uefi bootloader |
 
 everything is cross-compiled with clang against a private sysroot

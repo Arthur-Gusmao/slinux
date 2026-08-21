@@ -9,15 +9,17 @@ IMAGE     := $(ROOT)/slinux.img
 
 CC := clang --target=x86_64-linux-musl --sysroot=$(SYSROOT)
 
-INIT_DIRS  := init/sinit
-USER_DIRS  := userland/sbase userland/ubase userland/9base
-SHELL_DIR  := shell/dash
-VI_DIR     := userland/neatvi
-ZLIB_DIR   := userland/zlib
+INIT_DIRS   := init/sinit
+USER_DIRS   := userland/sbase userland/ubase userland/9base
+SHELL_DIR   := shell/dash
+VI_DIR      := userland/neatvi
+ZLIB_DIR    := userland/zlib
+BEARSSL_DIR := userland/bearssl
+CURSES_DIR  := userland/netbsd-curses
 ZLIB_SRCS  := adler32 compress crc32 deflate gzclose gzlib gzread gzwrite \
 	infback inffast inflate inftrees trees uncompr zutil
 
-.PHONY: all musl headers userland rootfs initramfs run image run-image kernel clean help
+.PHONY: all musl headers bearssl curses userland rootfs initramfs run image run-image kernel clean help
 
 all: initramfs
 
@@ -28,6 +30,8 @@ help:
 	@echo "  make musl        build musl into out/sysroot"
 	@echo "  make headers     install kernel uapi headers into out/sysroot"
 	@echo "  make userland    build and install every userland tool"
+	@echo "  make bearssl     build bearssl (lib into sysroot, brssl)"
+	@echo "  make curses      build netbsd-curses (libs, tput/tset/tabs)"
 	@echo "  make rootfs      populate rootfs/ with binaries and etc files"
 	@echo "  make initramfs   pack rootfs/ into slinux.cpio.gz"
 	@echo "  make kernel      build the linux kernel"
@@ -59,7 +63,31 @@ musl:
 headers:
 	$(MAKE) -C kernel/linux INSTALL_HDR_PATH=$(SYSROOT)/usr headers_install
 
-userland: musl headers
+bearssl: musl
+	@test -d $(BEARSSL_DIR) || { \
+		echo "$(BEARSSL_DIR) missing: add the submodule first"; exit 1; }
+	$(MAKE) -C $(BEARSSL_DIR) CC='$(CC)' AR=llvm-ar LD='$(CC)' \
+		CFLAGS='-W -Wall -Os' LDFLAGS='-s -static' DLL=no TESTS=no lib tools
+	mkdir -p $(SYSROOT)/usr/include/bearssl $(ROOTFS)/bin
+	cp -f $(BEARSSL_DIR)/inc/bearssl.h $(BEARSSL_DIR)/inc/bearssl_*.h \
+		$(SYSROOT)/usr/include/bearssl/
+	cp -f $(BEARSSL_DIR)/build/libbearssl.a $(SYSROOT)/usr/lib/
+	install -m755 $(BEARSSL_DIR)/build/brssl $(ROOTFS)/bin/brssl
+
+curses: musl
+	@test -d $(CURSES_DIR) || { \
+		echo "$(CURSES_DIR) missing: add the submodule first"; exit 1; }
+	$(MAKE) -C $(CURSES_DIR) CC='$(CC)' AR=llvm-ar RANLIB=llvm-ranlib \
+		CFLAGS='-Os' LDFLAGS='-s -static' LDFLAGS_HOST='-s -static' \
+		PREFIX=/usr DESTDIR=$(SYSROOT) all-static install-static
+	$(MAKE) -C $(CURSES_DIR) terminfo/terminfo.cdb
+	mkdir -p $(ROOTFS)/bin $(ROOTFS)/usr/share
+	install -m755 $(SYSROOT)/usr/bin/tput $(SYSROOT)/usr/bin/tset \
+		$(SYSROOT)/usr/bin/tabs $(ROOTFS)/bin/
+	install -m644 $(CURSES_DIR)/terminfo/terminfo.cdb \
+		$(ROOTFS)/usr/share/terminfo.cdb
+
+userland: musl headers bearssl curses
 	$(MAKE) -C $(INIT_DIRS) CC='$(CC)'
 	$(MAKE) -C $(INIT_DIRS) install DESTDIR=$(ROOTFS) PREFIX=/
 	mv -f $(ROOTFS)/bin/sinit $(ROOTFS)/bin/init
@@ -93,7 +121,17 @@ rootfs: userland
 	mkdir -p $(ROOTFS)/dev $(ROOTFS)/proc $(ROOTFS)/sys $(ROOTFS)/tmp
 	mkdir -p $(ROOTFS)/root $(ROOTFS)/var/run $(ROOTFS)/var/log
 	chmod 1777 $(ROOTFS)/tmp
-	install -m644 etc/passwd etc/group etc/hostname etc/motd etc/fstab $(ROOTFS)/etc/
+	install -m644 etc/passwd etc/group etc/hostname etc/motd etc/fstab \
+		etc/resolv.conf etc/hosts $(ROOTFS)/etc/
+	mkdir -p $(ROOTFS)/etc/ssl
+	@if [ -f /etc/ssl/certs/ca-certificates.crt ]; then \
+		install -m644 /etc/ssl/certs/ca-certificates.crt \
+			$(ROOTFS)/etc/ssl/cert.pem; \
+	else \
+		echo "warning: host has no CA bundle"; \
+		echo "warning: https validation will fail until you provide one"; \
+		touch $(ROOTFS)/etc/ssl/cert.pem; \
+	fi
 	install -m755 etc/rc.init etc/rc.shutdown $(ROOTFS)/bin/
 	ln -sf dash $(ROOTFS)/bin/sh
 	ln -sf /bin/init $(ROOTFS)/sbin/init
@@ -120,7 +158,8 @@ kernel:
 	$(MAKE) -C kernel/linux olddefconfig all
 
 clean:
-	-@for d in $(INIT_DIRS) $(USER_DIRS) $(SHELL_DIR) $(VI_DIR) libc/musl; do \
+	-@for d in $(INIT_DIRS) $(USER_DIRS) $(SHELL_DIR) $(VI_DIR) libc/musl \
+		$(BEARSSL_DIR) $(CURSES_DIR); do \
 		[ -d $$d ] && $(MAKE) -C $$d clean; done
 	rm -rf out rootfs slinux.cpio.gz
 	rm -f $(ZLIB_DIR)/*.o $(ZLIB_DIR)/libz.a $(ZLIB_DIR)/minigzip $(IMAGE)

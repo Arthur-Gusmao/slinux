@@ -28,3 +28,9 @@
 	path = userland/zlib
 	url = git@github.com:madler/zlib.git
 	ignore = dirty
+[submodule "userland/bearssl"]
+	path = userland/bearssl
+	url = https://www.bearssl.org/git/BearSSL
+[submodule "userland/netbsd-curses"]
+	path = userland/netbsd-curses
+	url = https://github.com/sabotage-linux/netbsd-curses.git
