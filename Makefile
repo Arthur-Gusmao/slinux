@@ -12,6 +12,9 @@ INIT_DIRS  := init/sinit
 USER_DIRS  := userland/sbase userland/ubase userland/9base
 SHELL_DIR  := shell/dash
 VI_DIR     := userland/neatvi
+ZLIB_DIR   := userland/zlib
+ZLIB_SRCS  := adler32 compress crc32 deflate gzclose gzlib gzread gzwrite \
+	infback inffast inflate inftrees trees uncompr zutil
 
 .PHONY: all musl headers userland rootfs initramfs run kernel clean
 
@@ -52,6 +55,16 @@ userland: musl headers
 	$(MAKE) -C $(VI_DIR) clean
 	$(MAKE) -C $(VI_DIR) CC='$(CC)' CFLAGS='-Wall -O2 -Wno-format-truncation' LDFLAGS='-s -static'
 	install -m755 $(VI_DIR)/vi $(ROOTFS)/bin/vi
+	rm -f $(ZLIB_DIR)/*.o $(ZLIB_DIR)/libz.a $(ZLIB_DIR)/minigzip
+	@for f in $(ZLIB_SRCS); do \
+		$(CC) -O2 -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN \
+			-c $(ZLIB_DIR)/$$f.c -o $(ZLIB_DIR)/$$f.o || exit; done
+	llvm-ar rcs $(ZLIB_DIR)/libz.a $(addprefix $(ZLIB_DIR)/,$(ZLIB_SRCS:=.o))
+	$(CC) -O2 -I$(ZLIB_DIR) -s -static -o $(ZLIB_DIR)/minigzip \
+		$(ZLIB_DIR)/test/minigzip.c $(ZLIB_DIR)/libz.a
+	install -m755 $(ZLIB_DIR)/minigzip $(ROOTFS)/bin/gzip
+	printf '#!/bin/sh\nexec /bin/gzip -d "$$@"\n' > $(ROOTFS)/bin/gunzip
+	chmod 755 $(ROOTFS)/bin/gunzip
 
 rootfs: userland
 	mkdir -p $(ROOTFS)/bin $(ROOTFS)/sbin $(ROOTFS)/etc
@@ -78,3 +91,4 @@ clean:
 	-@for d in $(INIT_DIRS) $(USER_DIRS) $(SHELL_DIR) $(VI_DIR) libc/musl; do \
 		[ -d $$d ] && $(MAKE) -C $$d clean; done
 	rm -rf out rootfs slinux.cpio.gz
+	rm -f $(ZLIB_DIR)/*.o $(ZLIB_DIR)/libz.a $(ZLIB_DIR)/minigzip
