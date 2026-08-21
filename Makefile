@@ -5,6 +5,7 @@ SYSROOT   := $(ROOT)/out/sysroot
 ROOTFS    := $(ROOT)/rootfs
 INITRAMFS := $(ROOT)/slinux.cpio.gz
 BZIMAGE   := $(ROOT)/kernel/linux/arch/x86/boot/bzImage
+IMAGE     := $(ROOT)/slinux.img
 
 CC := clang --target=x86_64-linux-musl --sysroot=$(SYSROOT)
 
@@ -84,6 +85,16 @@ run: initramfs
 	qemu-system-x86_64 -m 256M -kernel $(BZIMAGE) -initrd $(INITRAMFS) \
 		-append "console=ttyS0" -nographic -no-reboot
 
+image: initramfs
+	./install.sh $(IMAGE) 256
+
+run-image: image
+	@test -f out/OVMF_VARS.fd || cp /usr/share/OVMF/OVMF_VARS.fd out/OVMF_VARS.fd
+	qemu-system-x86_64 -m 512M \
+		-drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd \
+		-drive if=pflash,format=raw,file=out/OVMF_VARS.fd \
+		-drive file=$(IMAGE),format=raw,if=virtio -nographic
+
 kernel:
 	$(MAKE) -C kernel/linux olddefconfig all
 
@@ -91,4 +102,4 @@ clean:
 	-@for d in $(INIT_DIRS) $(USER_DIRS) $(SHELL_DIR) $(VI_DIR) libc/musl; do \
 		[ -d $$d ] && $(MAKE) -C $$d clean; done
 	rm -rf out rootfs slinux.cpio.gz
-	rm -f $(ZLIB_DIR)/*.o $(ZLIB_DIR)/libz.a $(ZLIB_DIR)/minigzip
+	rm -f $(ZLIB_DIR)/*.o $(ZLIB_DIR)/libz.a $(ZLIB_DIR)/minigzip $(IMAGE)
