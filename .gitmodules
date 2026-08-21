@@ -4,6 +4,7 @@
 [submodule "init/sinit"]
 	path = init/sinit
 	url = git@github.com:Arthur-Gusmao/sinit.git
+	ignore = dirty
 [submodule "userland/9base"]
 	path = userland/9base
 	url = git@github.com:Arthur-Gusmao/9base.git
@@ -13,6 +14,7 @@
 [submodule "userland/ubase"]
 	path = userland/ubase
 	url = git@github.com:Arthur-Gusmao/ubase.git
+	ignore = dirty
 [submodule "libc/musl"]
 	path = libc/musl
 	url = https://git.musl-libc.org/git/musl
@@ -25,3 +27,4 @@
 [submodule "userland/zlib"]
 	path = userland/zlib
 	url = git@github.com:madler/zlib.git
+	ignore = dirty
