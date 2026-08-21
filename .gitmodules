@@ -17,7 +17,7 @@
 	ignore = dirty
 [submodule "libc/musl"]
 	path = libc/musl
-	url = https://git.musl-libc.org/git/musl
+	url = https://github.com/kraj/musl.git
 [submodule "shell/dash"]
 	path = shell/dash
 	url = https://git.kernel.org/pub/scm/utils/dash/dash.git
