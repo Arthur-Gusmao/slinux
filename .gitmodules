@@ -22,3 +22,6 @@
 [submodule "userland/neatvi"]
 	path = userland/neatvi
 	url = git@github.com:aligrudi/neatvi.git
+[submodule "userland/zlib"]
+	path = userland/zlib
+	url = git@github.com:madler/zlib.git
