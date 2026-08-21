@@ -1,0 +1,20 @@
+#!/bin/sh
+# slinux boot script, spawned by sinit(8)
+
+export PATH=/bin
+
+echo "Starting slinux..."
+
+mountpoint -q /proc || mount -t proc proc /proc
+mountpoint -q /sys  || mount -t sysfs sys /sys
+mountpoint -q /dev  || mount -t devtmpfs dev /dev
+
+mkdir -p /var/run /var/log
+chmod 1777 /tmp
+
+hostname "$(cat /etc/hostname)"
+
+cat /etc/motd
+
+# console login, restarted automatically if the shell exits
+respawn getty /dev/ttyS0 linux &

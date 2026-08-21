@@ -1,0 +1,14 @@
+#!/bin/sh
+# slinux shutdown script, called by sinit(8)
+# $1 is "reboot" or "poweroff"
+
+export PATH=/bin
+
+echo "Shutting down slinux..."
+sync
+umount -a
+
+case "$1" in
+reboot) halt -r ;;
+*)      halt -p ;;
+esac
