@@ -18,3 +18,4 @@ cat /etc/motd
 
 # console login, restarted automatically if the shell exits
 respawn getty /dev/ttyS0 linux &
+respawn getty /dev/tty1 linux &
