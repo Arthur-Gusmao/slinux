@@ -66,3 +66,6 @@
 [submodule "userland/limine"]
 	path = userland/limine
 	url = https://github.com/limine-bootloader/limine.git
+[submodule "userland/smdev"]
+	path = userland/smdev
+	url = https://git.suckless.org/smdev
