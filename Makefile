@@ -358,25 +358,15 @@ iso: initramfs $(LIMINE_TOOL)
 		bootloader/limine/limine-bios-cd.bin \
 		bootloader/limine/limine-uefi-cd.bin out/iso/
 	install -m644 bootloader/limine/BOOTX64.EFI out/iso/EFI/BOOT/
-	printf 'timeout: 5\n\n/slinux (live)\n    protocol: linux\n    path: boot():/vmlinuz\n    cmdline: console=ttyS0 console=tty0\n    module_path: boot():/initramfs.cpio.gz\n\n/slinux (live, safe video)\n    protocol: linux\n    path: boot():/vmlinuz\n    cmdline: nomodeset console=ttyS0 console=tty0\n    module_path: boot():/initramfs.cpio.gz\n\n/slinux (debug shell)\n    protocol: linux\n    path: boot():/vmlinuz\n    cmdline: rdinit=/bin/sh console=ttyS0 console=tty0\n    module_path: boot():/initramfs.cpio.gz\n\n/slinux (trace)\n    protocol: linux\n    path: boot():/vmlinuz\n    cmdline: nomodeset slinux_trace console=ttyS0 console=tty0\n    module_path: boot():/initramfs.cpio.gz\n\n/slinux (trace, ps2 quirks)\n    protocol: linux\n    path: boot():/vmlinuz\n    cmdline: nomodeset slinux_trace pnpacpi=off i8042.nopnp i8042.nomux=1 console=ttyS0 console=tty0\n    module_path: boot():/initramfs.cpio.gz\n\n/slinux (netconsole)\n    protocol: linux\n    path: boot():/vmlinuz\n    cmdline: nomodeset slinux_trace netconsole=6666@T480_IP/eth0,6666@LISTENER_IP/LISTENER_MAC console=ttyS0 console=tty0\n    module_path: boot():/initramfs.cpio.gz\n' \
+	@printf '%s\n' \
+'timeout: 5' \
+'' \
+'/slinux (live)' \
+'    protocol: linux' \
+'    path: boot():/vmlinuz' \
+'    cmdline: pnpacpi=off i8042.nopnp i8042.nomux=1 console=ttyS0 console=tty0' \
+'    module_path: boot():/initramfs.cpio.gz' \
 		> out/iso/limine.conf
-	xorriso -as mkisofs -r -J -V SLINUX_LIVE \
-		-b limine-bios-cd.bin -no-emul-boot -boot-load-size 4 \
-		-boot-info-table --protective-msdos-label \
-		--efi-boot limine-uefi-cd.bin -efi-boot-part --efi-boot-image \
-		out/iso -o $(ISO)
-	$(LIMINE_TOOL) bios-install $(ISO)
-	@echo "wrote $(ISO)"
-
-run-iso: iso
-	qemu-system-x86_64 -m 768M -cdrom $(ISO) -nographic -no-reboot
-
-run-iso-uefi: iso
-	@test -f out/OVMF_VARS.fd || cp /usr/share/OVMF/OVMF_VARS.fd out/OVMF_VARS.fd
-	qemu-system-x86_64 -m 768M \
-		-drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd \
-		-drive if=pflash,format=raw,file=out/OVMF_VARS.fd \
-		-cdrom $(ISO) -nographic -no-reboot
 
 kernel:
 	cp kernel/config kernel/linux/.config
