@@ -262,8 +262,9 @@ endif
 
 initramfs: rootfs
 	find $(ROOTFS) -print0 | xargs -0 touch -h -d @$(SOURCE_DATE_EPOCH)
-	(cd $(ROOTFS) && find . -print0 | LC_ALL=C sort -z | \
-		cpio --null -o -H newc --quiet --reproducible) | gzip -9n > $(INITRAMFS)
+	fakeroot -- sh -c 'chown -R 0:0 $(ROOTFS) && \
+		cd $(ROOTFS) && find . -print0 | LC_ALL=C sort -z | \
+		cpio --null -o -H newc --quiet --reproducible' | gzip -9n > $(INITRAMFS)
 
 run: initramfs
 	qemu-system-x86_64 -m 256M -kernel $(BZIMAGE) -initrd $(INITRAMFS) \
@@ -283,15 +284,16 @@ run-image: image
 # dd-able to usb sticks as well. the live system ships slinux-install(8)
 iso: initramfs $(LIMINE_TOOL)
 	@command -v xorriso >/dev/null || { echo "xorriso missing"; exit 1; }
-	rm -rf out/iso && mkdir -p out/iso
+	rm -rf out/iso && mkdir -p out/iso/EFI/BOOT
 	cp $(BZIMAGE) out/iso/vmlinuz
 	cp $(INITRAMFS) out/iso/initramfs.cpio.gz
 	install -m644 bootloader/limine/limine-bios.sys \
 		bootloader/limine/limine-bios-cd.bin \
 		bootloader/limine/limine-uefi-cd.bin out/iso/
+	install -m644 bootloader/limine/BOOTX64.EFI out/iso/EFI/BOOT/
 	printf 'timeout: 5\n\n/slinux (live)\n    protocol: linux\n    path: boot():/vmlinuz\n    cmdline: console=ttyS0 console=tty0\n    module_path: boot():/initramfs.cpio.gz\n' \
 		> out/iso/limine.conf
-	xorriso -as mkisofs -R -J -V SLINUX_LIVE \
+	xorriso -as mkisofs -r -J -V SLINUX_LIVE \
 		-b limine-bios-cd.bin -no-emul-boot -boot-load-size 4 \
 		-boot-info-table --protective-msdos-label \
 		--efi-boot limine-uefi-cd.bin -efi-boot-part --efi-boot-image \
