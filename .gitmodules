@@ -86,3 +86,15 @@
 	path = userland/curl
 	url = https://github.com/curl/curl.git
 	ignore = all
+[submodule "userland/iputils"]
+	path = userland/iputils
+	url = https://github.com/iputils/iputils
+[submodule "userland/net-tools"]
+	path = userland/net-tools
+	url = https://github.com/ecki/net-tools
+[submodule "userland/openrdate"]
+	path = userland/openrdate
+	url = https://github.com/resurrecting-open-source-projects/openrdate
+[submodule "userland/libressl"]
+	path = userland/libressl
+	url = https://github.com/libressl-portable/portable

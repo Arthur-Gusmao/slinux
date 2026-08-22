@@ -23,7 +23,7 @@ philosophy where practical: small tools, simple code, sane defaults.
 | dash | upstream | `/bin/sh` |
 | neatvi | upstream | vi editor |
 | zlib + minigzip | upstream | gzip/gunzip |
-| bearssl | upstream | tls library; `brssl` tool and https `wget` (in sbase) |
+| bearssl | upstream | tls library; `brssl` tool (used by curl) |
 | netbsd-curses | upstream | curses/terminfo libraries, `tput` `tset` `tabs` |
 | sdhcp | upstream | dhcp client, started by rc.init |
 | e2fsprogs | upstream | static `mkfs.ext4`, `fsck.ext4`, `tune2fs` |
@@ -31,7 +31,13 @@ philosophy where practical: small tools, simple code, sane defaults.
 | wpa_supplicant | [hostap](https://w1.fi/hostap.git) 2.12 | static, internal crypto, wpa2-psk and eap |
 | util-linux | upstream | static `sfdisk` (partitioning) |
 | dosfstools | upstream | static `mkfs.fat`, `fsck.fat` (esp) |
-| ubase extras | ours | `ifconfig`, `rdate` (sntp), `syslogd`, `logger`, `ping` |
+| libressl | upstream | tls library (static), used by `wget` |
+| GNU wget 1.25 | upstream | full-featured `wget` with https over libressl |
+| iputils 20250605 | upstream | `ping`, `ping6`, `tracepath`, `arping` |
+| net-tools 2.10 | upstream | classic `ifconfig`, `route`, `netstat`, `arp`, `nameif` |
+| openrdate | upstream | `rdate` (sntp), musl shim in `patches/` |
+| mandoc 1.14.6 | vendored snapshot | `man`, `apropos`, `whatis`, `makewhatis`; pager is plan9 `p` |
+| ubase extras | ours | `syslogd`, `logger` |
 | smdev | fork | device manager: `smdev -s` coldplug; slinux rules baked into the fork |
 | nldev | mirror | netlink hotplug daemon feeding uevents to smdev |
 | svc | mirror | service framework (`svc -s/-k/-r/-a/-d/-l`, `service start/stop/restart`) |
@@ -61,13 +67,13 @@ runtime archives. every target binary is statically linked.
 developed on alpine linux. you need:
 
 - `clang`, `llvm` (llvm-ar), `make`, `cpio`, `rsync`
+- `meson`, `ninja` (iputils)
 - `gcc` (runtime archives mirrored into the sysroot), `musl-cross` not
   required - clang targets the sysroot directly
 - `util-linux` (sfdisk, losetup, blkid), `dosfstools`, `e2fsprogs`
 - `xorriso` (iso), `fakeroot` (root-owned initramfs)
 - `limine` cli tool (bios-install step of `make iso`)
-- `ovmf` and `qemu-system-x86_64` for testing
-- `doas` or sudo access for loop mounts during `make image`
+- `doas` or sudo access for loop mounts during usb writing
 
 clone with submodules:
 
@@ -84,7 +90,6 @@ run `make help` for the short version. main targets:
 make              # musl -> headers -> userland -> rootfs -> slinux.cpio.gz
 make kernel       # build the linux kernel from kernel/config
 make iso          # slinux.iso: hybrid bios+uefi live installer (~60m)
-make image        # slinux.img: gpt disk image with the system installed
 make clean        # remove build artifacts
 ```
 
@@ -92,18 +97,6 @@ stages can be rebuilt in isolation (`make userland`, `make rootfs`,
 `make initramfs`, ...). builds are reproducible: everything is stamped
 with `SOURCE_DATE_EPOCH` from the last commit, the initramfs file list is
 sorted and packed under fakeroot so all files are uid 0/gid 0.
-
-## running in qemu
-
-```
-make run              # live ram-only boot, serial console
-make run-iso          # boot slinux.iso through bios (seabios)
-make run-iso-uefi     # boot slinux.iso through uefi (ovmf)
-make run-image        # boot slinux.img through uefi (ovmf)
-```
-
-login is `root` with an empty password (just press enter). exit qemu with
-`ctrl-a x`.
 
 ## installing on real hardware (baremetal)
 
@@ -142,8 +135,10 @@ login is `root` with an empty password (just press enter). exit qemu with
 | wired network | automatic (`sdhcp` at boot) |
 | wifi | create `/etc/wpa_supplicant.conf` and reboot; rc.init associates and dhcp's every wlan interface found |
 | clock | `rdate pool.ntp.org` |
-| https | `curl https://...` (bearssl, ca bundle at `/etc/ssl/cert.pem`) or `wget` |
-| icmp | `ping -c 3 host` |
+| https | `curl https://...` (bearssl) or `wget https://...` (libressl); ca bundle at `/etc/ssl/cert.pem` |
+| icmp | `ping -c 3 host` (`iputils`) |
+| routing | `ifconfig`, `route`, `netstat`, `arp` (net-tools) |
+| man pages | `man ls`, `apropos network` (mandoc; db ships prebuilt) |
 
 ### services
 
@@ -188,7 +183,10 @@ libc/musl           musl source (submodule)
 init/sinit          init (submodule)
 userland/           sbase, ubase, 9base, neatvi, zlib, bearssl,
                     netbsd-curses, sdhcp, e2fsprogs, dropbear, hostap,
-                    util-linux, dosfstools (submodules)
+                    util-linux, dosfstools, libressl, iputils,
+                    net-tools, openrdate, wget (submodules)
+userland/mandoc     vendored mandoc snapshot (man/apropos)
+patches/            musl compat shims (openrdate)
 shell/dash          dash (submodule)
 etc/                boot scripts (rc.init), motd, services, fstab
 bin/slinux-install  on-target installer (runs from the live system)
@@ -198,7 +196,7 @@ install.sh          host-side disk/image installer
 Makefile            build orchestration
 out/                sysroot and scratch space (not tracked)
 rootfs/             generated root filesystem (not tracked)
-slinux.iso/.img     build outputs (not tracked)
+slinux.iso          build output (not tracked)
 ```
 
 ## boot flow

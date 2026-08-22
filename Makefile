@@ -5,7 +5,6 @@ SYSROOT   := $(ROOT)/out/sysroot
 ROOTFS    := $(ROOT)/rootfs
 INITRAMFS := $(ROOT)/slinux.cpio.gz
 BZIMAGE   := $(ROOT)/kernel/linux/arch/x86/boot/bzImage
-IMAGE     := $(ROOT)/slinux.img
 ISO       := $(ROOT)/slinux.iso
 
 CC := clang --target=x86_64-linux-musl --sysroot=$(SYSROOT)
@@ -33,12 +32,18 @@ NLDEV_DIR   := userland/nldev
 SVC_DIR     := userland/svc
 SUP_DIR     := userland/sup
 CURL_DIR    := userland/curl
+LIBRESSL_DIR  := userland/libressl
+IPUTILS_DIR   := userland/iputils
+NET_TOOLS_DIR := userland/net-tools
+OPENRDATE_DIR := userland/openrdate
+MANDOC_DIR    := userland/mandoc
+WGET_DIR      := userland/wget
 FIRMWARE_DIR  := firmware
 LIMINE_TOOL    := /usr/bin/limine
 ZLIB_SRCS  := adler32 compress crc32 deflate gzclose gzlib gzread gzwrite \
 	infback inffast inflate inftrees trees uncompr zutil
 
-.PHONY: iso run-iso run-iso-uefi all musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat userland rootfs initramfs run image run-image kernel clean help
+.PHONY: iso all musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat smdev nldev svc sup curl zlib libressl iputils nettools rdate mandoc wget userland rootfs initramfs kernel clean help
 
 all: initramfs
 
@@ -62,17 +67,17 @@ help:
 	@echo "  make svc         install svc(8) service framework"
 	@echo "  make sup         build sup (hardcoded sudo, suid)"
 	@echo "  make curl        build curl (static, BearSSL TLS)"
+	@echo "  make zlib        build zlib (lib into sysroot)"
+	@echo "  make libressl    build libressl (libs into sysroot)"
+	@echo "  make iputils     build ping/ping6/tracepath/arping (static)"
+	@echo "  make nettools    build ifconfig/route/netstat/arp/nameif (static)"
+	@echo "  make rdate       build rdate (sntp, static)"
+	@echo "  make mandoc      build man/apropos/whatis/makewhatis"
+	@echo "  make wget        build GNU wget (static, LibreSSL TLS)"
 	@echo "  make rootfs      populate rootfs/ with binaries and etc files"
 	@echo "  make initramfs   pack rootfs/ into slinux.cpio.gz"
 	@echo "  make kernel      build the linux kernel"
-	@echo "  make image       build slinux.img (gpt: esp + ext4 root)"
 	@echo "  make iso         build slinux.iso (hybrid bios+uefi live installer)"
-	@echo "  make run-iso     boot slinux.iso in qemu (bios)"
-	@echo "  make run-iso-uefi boot slinux.iso in qemu (uefi)"
-	@echo
-	@echo "run targets:"
-	@echo "  make run         boot the initramfs in qemu, serial console"
-	@echo "  make run-image   boot slinux.img in qemu with uefi (ovmf)"
 	@echo
 	@echo "misc targets:"
 	@echo "  make clean       remove build artifacts"
@@ -146,17 +151,22 @@ e2fsprogs: musl
 		ln -sf mke2fs $(ROOTFS)/bin/mkfs.$$t; \
 		ln -sf e2fsck $(ROOTFS)/bin/fsck.$$t; done
 
-dropbear: musl
-	@test -d $(DROPBEAR_DIR) || { \
-		echo "$(DROPBEAR_DIR) missing: add the submodule first"; exit 1; }
-	rm -f $(ZLIB_DIR)/libz.a
+zlib: musl
+	@test -d $(ZLIB_DIR) || { \
+		echo "$(ZLIB_DIR) missing: add the submodule first"; exit 1; }
 	@for f in $(ZLIB_SRCS); do \
 		$(CC) -Os -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN \
 			-c $(ZLIB_DIR)/$$f.c -o $(ZLIB_DIR)/$$f.o || exit; done
 	llvm-ar rcs $(ZLIB_DIR)/libz.a $(addprefix $(ZLIB_DIR)/,$(ZLIB_SRCS:=.o))
+	mkdir -p $(SYSROOT)/usr/include $(SYSROOT)/usr/lib
+	cp -f $(ZLIB_DIR)/zlib.h $(ZLIB_DIR)/zconf.h $(SYSROOT)/usr/include/
+	cp -f $(ZLIB_DIR)/libz.a $(SYSROOT)/usr/lib/
+
+dropbear: musl zlib
+	@test -d $(DROPBEAR_DIR) || { \
+		echo "$(DROPBEAR_DIR) missing: add the submodule first"; exit 1; }
 	cd $(DROPBEAR_DIR) && CC='$(CC)' ./configure --prefix=/usr \
-		CFLAGS='-Os -I$(ROOT)/$(ZLIB_DIR)' \
-		LDFLAGS='-s -static -L$(ROOT)/$(ZLIB_DIR)'
+		CFLAGS='-Os' LDFLAGS='-s -static'
 	$(MAKE) -C $(DROPBEAR_DIR) MULTI=1
 	mkdir -p $(ROOTFS)/bin
 	install -m755 $(DROPBEAR_DIR)/dropbearmulti $(ROOTFS)/bin/dropbearmulti
@@ -190,6 +200,7 @@ sfdisk: musl
 		echo "$(UTIL_LINUX_DIR) missing: add the submodule first"; exit 1; }
 	@test -f $(ROOT)/out/sysroot/usr/lib/libgcc_s.a || \
 		ar rcs $(SYSROOT)/usr/lib/libgcc_s.a
+	cd $(UTIL_LINUX_DIR) && PATH=/usr/bin:/bin autoreconf -fi >/dev/null 2>&1
 	cd $(UTIL_LINUX_DIR) && CC='$(CC)' ./configure --prefix=/usr \
 		--disable-shared --enable-static --enable-static-programs=sfdisk \
 		--without-systemdsystemunitdir --without-systemd \
@@ -206,6 +217,7 @@ sfdisk: musl
 mkfsfat: musl
 	@test -d $(DOSFSTOOLS_DIR) || { \
 		echo "$(DOSFSTOOLS_DIR) missing: add the submodule first"; exit 1; }
+	cd $(DOSFSTOOLS_DIR) && PATH=/usr/bin:/bin autoreconf -fi >/dev/null 2>&1
 	cd $(DOSFSTOOLS_DIR) && CC='$(CC)' ./configure --prefix=/usr \
 		--disable-nls LDFLAGS='-static -s'
 	$(MAKE) -C $(DOSFSTOOLS_DIR)
@@ -262,7 +274,101 @@ curl: musl bearssl
 	mkdir -p $(ROOTFS)/bin
 	install -m755 $(CURL_DIR)/src/curl $(ROOTFS)/bin/curl
 
-userland: musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat smdev nldev svc sup curl
+libressl: musl
+	@test -d $(LIBRESSL_DIR) || { \
+		echo "$(LIBRESSL_DIR) missing: add the submodule first"; exit 1; }
+	@test -f $(SYSROOT)/usr/lib/libgcc_s.a || ar rcs $(SYSROOT)/usr/lib/libgcc_s.a
+	cd $(LIBRESSL_DIR) && autoreconf -fi >/dev/null 2>&1
+	cd $(LIBRESSL_DIR) && CC='$(CC)' CFLAGS='-Os' ./configure \
+		--prefix=/usr --disable-shared --disable-tests
+	$(MAKE) -C $(LIBRESSL_DIR)/crypto -j$$(nproc)
+	$(MAKE) -C $(LIBRESSL_DIR)/ssl -j$$(nproc)
+	mkdir -p $(SYSROOT)/usr/include/openssl $(SYSROOT)/usr/lib/pkgconfig
+	cp -f $(LIBRESSL_DIR)/include/openssl/*.h $(SYSROOT)/usr/include/openssl/
+	cp -f $(LIBRESSL_DIR)/crypto/.libs/libcrypto.a \
+		$(LIBRESSL_DIR)/ssl/.libs/libssl.a $(SYSROOT)/usr/lib/
+	printf 'Name: OpenSSL\nDescription: LibreSSL (OpenSSL-compatible)\nVersion: 4.3.2\nRequires: libssl libcrypto\n' \
+		> $(SYSROOT)/usr/lib/pkgconfig/openssl.pc
+	printf 'Name: LibreSSL\nVersion: 4.3.2\nLibs: -lssl -lcrypto\nCflags:\n' \
+		> $(SYSROOT)/usr/lib/pkgconfig/libssl.pc
+	printf 'Name: LibreSSL crypto\nVersion: 4.3.2\nLibs: -lcrypto\nCflags:\n' \
+		> $(SYSROOT)/usr/lib/pkgconfig/libcrypto.pc
+
+iputils: musl headers
+	@test -d $(IPUTILS_DIR) || { \
+		echo "$(IPUTILS_DIR) missing: add the submodule first"; exit 1; }
+	@if [ ! -f $(IPUTILS_DIR)/build/build.ninja ]; then \
+		cd $(IPUTILS_DIR) && CC='$(CC)' LDFLAGS='-static' \
+		meson setup build --prefix=/usr -DUSE_CAP=false -DUSE_IDN=false \
+		-DUSE_GETTEXT=false -DBUILD_MANS=false > /dev/null; fi
+	ninja -C $(IPUTILS_DIR)/build >/dev/null
+	mkdir -p $(ROOTFS)/bin
+	install -m755 $(IPUTILS_DIR)/build/ping/ping $(ROOTFS)/bin/ping
+	install -m755 $(IPUTILS_DIR)/build/arping $(IPUTILS_DIR)/build/tracepath \
+		$(ROOTFS)/bin/
+	ln -sf ping $(ROOTFS)/bin/ping6
+	ln -sf tracepath $(ROOTFS)/bin/tracepath6
+
+nettools: musl headers
+	@test -d $(NET_TOOLS_DIR) || { \
+		echo "$(NET_TOOLS_DIR) missing: add the submodule first"; exit 1; }
+	@awk 'BEGIN{split("n y y y n n n n n n n n n n y n n n n n n n n n n n n n n n n n n n n n y n n n n n n n",a," ");for(i=1;i<=44;i++)print a[i]}' | \
+		(cd $(NET_TOOLS_DIR) && bash ./configure.sh config.in) >/dev/null
+	$(MAKE) -C $(NET_TOOLS_DIR) CC='$(CC)' COPTS='-Os' LDFLAGS='-Llib -static -s'
+	mkdir -p $(ROOTFS)/bin
+	install -m755 $(NET_TOOLS_DIR)/ifconfig $(NET_TOOLS_DIR)/route \
+		$(NET_TOOLS_DIR)/netstat $(NET_TOOLS_DIR)/arp \
+		$(NET_TOOLS_DIR)/nameif $(ROOTFS)/bin/
+
+rdate: musl
+	@test -d $(OPENRDATE_DIR) || { \
+		echo "$(OPENRDATE_DIR) missing: add the submodule first"; exit 1; }
+	cd $(OPENRDATE_DIR) && ./autogen.sh >/dev/null 2>&1 || true
+	cd $(OPENRDATE_DIR) && CC='$(CC)' CFLAGS='-Os -D_GNU_SOURCE' \
+		CPPFLAGS='-I$(ROOT)/patches/openrdate-musl' ./configure \
+		--prefix=/usr LDFLAGS='-static -s'
+	$(MAKE) -C $(OPENRDATE_DIR)/src CFLAGS='-Os -D_GNU_SOURCE' \
+		rdate_LDADD=librdate.a
+	mkdir -p $(ROOTFS)/bin
+	install -m755 $(OPENRDATE_DIR)/src/rdate $(ROOTFS)/bin/rdate
+
+mandoc: musl zlib
+	@test -d $(MANDOC_DIR) || { \
+		echo "$(MANDOC_DIR) missing: add the submodule first"; exit 1; }
+	printf '%s\n' \
+		'CC="$(CC)"' \
+		'AR="llvm-ar"' \
+		'CFLAGS="-Os"' \
+		'LDFLAGS="-static -s"' \
+		'PREFIX="/usr"' \
+		'HAVE_WCHAR=1' \
+		'LN="ln -sf"' \
+		'BINM_PAGER="/usr/plan9/bin/p"' \
+		'MANPATH_DEFAULT="/usr/share/man"' \
+		> $(MANDOC_DIR)/configure.local
+	cd $(MANDOC_DIR) && ./configure
+	$(MAKE) -C $(MANDOC_DIR) -j$$(nproc)
+	mkdir -p $(ROOTFS)/bin $(ROOTFS)/etc
+	install -m755 $(MANDOC_DIR)/mandoc $(MANDOC_DIR)/demandoc \
+		$(MANDOC_DIR)/soelim $(ROOTFS)/bin/
+	ln -sf mandoc $(ROOTFS)/bin/man
+	ln -sf mandoc $(ROOTFS)/bin/apropos
+	ln -sf mandoc $(ROOTFS)/bin/whatis
+	ln -sf mandoc $(ROOTFS)/bin/makewhatis
+
+wget: musl zlib libressl
+	@test -d $(WGET_DIR) || { \
+		echo "$(WGET_DIR) missing: add the submodule first"; exit 1; }
+	cd $(WGET_DIR) && PKG_CONFIG_PATH=$(SYSROOT)/usr/lib/pkgconfig \
+		CC='$(CC)' ./configure --host=x86_64-linux-musl --prefix=/usr \
+		--sysconfdir=/etc \
+		--with-ssl=openssl --disable-nls --without-libpsl --disable-iri \
+		--disable-pcre2 --disable-pcre LDFLAGS='-static -s'
+	$(MAKE) -C $(WGET_DIR) -j$$(nproc)
+	mkdir -p $(ROOTFS)/bin
+	install -m755 $(WGET_DIR)/src/wget $(ROOTFS)/bin/wget
+
+userland: musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat smdev nldev svc sup curl libressl iputils nettools rdate mandoc wget
 	$(MAKE) -C $(INIT_DIRS) CC='$(CC)'
 	$(MAKE) -C $(INIT_DIRS) install DESTDIR=$(ROOTFS) PREFIX=/
 	mv -f $(ROOTFS)/bin/sinit $(ROOTFS)/bin/init
@@ -272,6 +378,7 @@ userland: musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfd
 	done
 	$(MAKE) -C userland/9base CC='$(CC)' PREFIX=/usr/plan9
 	$(MAKE) -C userland/9base install DESTDIR=$(ROOTFS) PREFIX=/usr/plan9
+	cd $(SHELL_DIR) && PATH=/usr/bin:/bin autoreconf -fi >/dev/null 2>&1
 	cd $(SHELL_DIR) && CC='$(CC)' LDFLAGS='-s -static' ./configure \
 		--prefix=/ --sysconfdir=/etc \
 		--build=x86_64-alpine-linux-musl --host=x86_64-linux-musl
@@ -280,13 +387,8 @@ userland: musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfd
 	$(MAKE) -C $(VI_DIR) clean
 	$(MAKE) -C $(VI_DIR) CC='$(CC)' CFLAGS='-Wall -O2 -Wno-format-truncation' LDFLAGS='-s -static'
 	install -m755 $(VI_DIR)/vi $(ROOTFS)/bin/vi
-	rm -f $(ZLIB_DIR)/*.o $(ZLIB_DIR)/libz.a $(ZLIB_DIR)/minigzip
-	@for f in $(ZLIB_SRCS); do \
-		$(CC) -O2 -D_LARGEFILE64_SOURCE=1 -DHAVE_HIDDEN \
-			-c $(ZLIB_DIR)/$$f.c -o $(ZLIB_DIR)/$$f.o || exit; done
-	llvm-ar rcs $(ZLIB_DIR)/libz.a $(addprefix $(ZLIB_DIR)/,$(ZLIB_SRCS:=.o))
-	$(CC) -O2 -I$(ZLIB_DIR) -s -static -o $(ZLIB_DIR)/minigzip \
-		$(ZLIB_DIR)/test/minigzip.c $(ZLIB_DIR)/libz.a
+	$(CC) -O2 -I$(SYSROOT)/usr/include -s -static -o $(ZLIB_DIR)/minigzip \
+		$(ZLIB_DIR)/test/minigzip.c -L$(SYSROOT)/usr/lib -lz
 	install -m755 $(ZLIB_DIR)/minigzip $(ROOTFS)/bin/gzip
 	printf '#!/bin/sh\nexec /bin/gzip -d "$$@"\n' > $(ROOTFS)/bin/gunzip
 	chmod 755 $(ROOTFS)/bin/gunzip
@@ -302,6 +404,7 @@ rootfs: userland
 	install -m644 etc/passwd etc/group etc/hostname etc/motd etc/fstab \
 		etc/resolv.conf etc/hosts etc/services $(ROOTFS)/etc/
 	mkdir -p $(ROOTFS)/etc/ssl
+	printf 'ca_certificate = /etc/ssl/cert.pem\n' > $(ROOTFS)/etc/wgetrc
 	@if [ -f /etc/ssl/certs/ca-certificates.crt ]; then \
 		install -m644 /etc/ssl/certs/ca-certificates.crt \
 			$(ROOTFS)/etc/ssl/cert.pem; \
@@ -326,26 +429,37 @@ endif
 	ln -sf dash $(ROOTFS)/bin/sh
 	ln -sf /bin/init $(ROOTFS)/sbin/init
 	ln -sf /bin/init $(ROOTFS)/init
+	mkdir -p $(ROOTFS)/usr/share/man/man1 \
+		$(ROOTFS)/usr/share/man/man5 $(ROOTFS)/usr/share/man/man8
+	@for d in userland/sbase userland/ubase; do \
+		for p in $$d/*.1; do [ -e $$p ] && install -m644 $$p \
+			$(ROOTFS)/usr/share/man/man1/ || exit; done; \
+		for p in $$d/*.8; do [ -e $$p ] || continue; \
+			install -m644 $$p $(ROOTFS)/usr/share/man/man8/ || exit; done; done
+	install -m644 userland/9base/p/p.1 $(ROOTFS)/usr/share/man/man1/
+	install -m644 $(MANDOC_DIR)/mandoc.1 $(MANDOC_DIR)/demandoc.1 \
+		$(MANDOC_DIR)/soelim.1 $(MANDOC_DIR)/man.1 \
+		$(MANDOC_DIR)/apropos.1 $(ROOTFS)/usr/share/man/man1/
+	install -m644 $(MANDOC_DIR)/man.conf.5 \
+		$(ROOTFS)/usr/share/man/man5/
+	install -m644 $(MANDOC_DIR)/makewhatis.8 $(ROOTFS)/usr/share/man/man8/
+	install -m644 userland/wget/doc/wget.1 $(ROOTFS)/usr/share/man/man1/
+	install -m644 userland/openrdate/docs/rdate.8 \
+		$(NET_TOOLS_DIR)/man/en_US/ifconfig.8 \
+		$(NET_TOOLS_DIR)/man/en_US/route.8 \
+		$(NET_TOOLS_DIR)/man/en_US/netstat.8 \
+		$(NET_TOOLS_DIR)/man/en_US/arp.8 \
+		$(NET_TOOLS_DIR)/man/en_US/nameif.8 \
+		$(ROOTFS)/usr/share/man/man8/
+	$(ROOTFS)/bin/makewhatis $(ROOTFS)/usr/share/man >/dev/null
+	printf '#!/bin/sh\nPATH=$$PATH:/usr/plan9/bin\nexport PATH\n' \
+		> $(ROOTFS)/etc/profile
 
 initramfs: rootfs
 	find $(ROOTFS) -print0 | xargs -0 touch -h -d @$(SOURCE_DATE_EPOCH)
 	fakeroot -- sh -c 'chown -R 0:0 $(ROOTFS) && \
 		cd $(ROOTFS) && find . -print0 | LC_ALL=C sort -z | \
 		cpio --null -o -H newc --quiet --reproducible' | gzip -9n > $(INITRAMFS)
-
-run: initramfs
-	qemu-system-x86_64 -m 256M -kernel $(BZIMAGE) -initrd $(INITRAMFS) \
-		-append "console=ttyS0" -nographic -no-reboot
-
-image: initramfs
-	./install.sh $(IMAGE) 256
-
-run-image: image
-	@test -f out/OVMF_VARS.fd || cp /usr/share/OVMF/OVMF_VARS.fd out/OVMF_VARS.fd
-	qemu-system-x86_64 -m 512M \
-		-drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd \
-		-drive if=pflash,format=raw,file=out/OVMF_VARS.fd \
-		-drive file=$(IMAGE),format=raw,if=virtio -nographic
 
 # hybrid iso: boots on bios (el torito) and uefi (embedded efi image);
 # dd-able to usb sticks as well. the live system ships slinux-install(8)
@@ -376,5 +490,17 @@ clean:
 	-@for d in $(INIT_DIRS) $(USER_DIRS) $(SHELL_DIR) $(VI_DIR) libc/musl \
 		$(BEARSSL_DIR) $(CURSES_DIR); do \
 		[ -d $$d ] && $(MAKE) -C $$d clean; done
+	-@for d in $(LIBRESSL_DIR) $(NET_TOOLS_DIR) $(OPENRDATE_DIR); do \
+		[ -d $$d ] && $(MAKE) -C $$d distclean 2>/dev/null; done
+	-[ -d $(MANDOC_DIR) ] && { $(MAKE) -C $(MANDOC_DIR) clean 2>/dev/null; \
+		rm -f $(MANDOC_DIR)/config.h $(MANDOC_DIR)/config.log \
+			$(MANDOC_DIR)/config.h.old $(MANDOC_DIR)/config.log.old \
+			$(MANDOC_DIR)/configure.local $(MANDOC_DIR)/Makefile.local; }
+	-[ -d $(WGET_DIR) ] && { $(MAKE) -C $(WGET_DIR) clean 2>/dev/null; \
+		rm -f $(WGET_DIR)/config.h $(WGET_DIR)/config.log \
+			$(WGET_DIR)/config.status $(WGET_DIR)/Makefile \
+			$(WGET_DIR)/*/Makefile $(WGET_DIR)/po/POTFILES \
+			$(WGET_DIR)/po/stamp-po; }
+	-rm -rf $(IPUTILS_DIR)/build
+	rm -f $(ZLIB_DIR)/*.o $(ZLIB_DIR)/libz.a $(ZLIB_DIR)/minigzip
 	rm -rf out rootfs slinux.cpio.gz
-	rm -f $(ZLIB_DIR)/*.o $(ZLIB_DIR)/libz.a $(ZLIB_DIR)/minigzip $(IMAGE)
