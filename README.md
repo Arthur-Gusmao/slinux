@@ -15,7 +15,7 @@ philosophy where practical: small tools, simple code, sane defaults.
 
 | component | source | role |
 |---|---|---|
-| linux 7.2 | [torvalds/linux](https://github.com/torvalds/linux) | kernel with ext4, ahci, nvme, usb, virtio |
+| linux 7.x | [torvalds/linux](https://github.com/torvalds/linux) | kernel: ext4, ahci, nvme, usb storage, virtio, framebuffer, wifi |
 | musl | [musl-libc](https://git.musl-libc.org/cgit/musl) | c library |
 | sinit | fork | init (pid 1) |
 | sbase + ubase | forks | core utilities |
@@ -25,91 +25,168 @@ philosophy where practical: small tools, simple code, sane defaults.
 | zlib + minigzip | upstream | gzip/gunzip |
 | bearssl | upstream | tls library; `brssl` tool and https `wget` (in sbase) |
 | netbsd-curses | upstream | curses/terminfo libraries, `tput` `tset` `tabs` |
-| sdhcp | upstream | dhcp client, configured from rc.init |
+| sdhcp | upstream | dhcp client, started by rc.init |
 | e2fsprogs | upstream | static `mkfs.ext4`, `fsck.ext4`, `tune2fs` |
-| dropbear | upstream | ssh server + `dbclient` (`ssh`) |
+| dropbear | upstream | ssh server (`dropbear`) + client (`dbclient`/`ssh`/`scp`) |
+| wpa_supplicant | [hostap](https://w1.fi/hostap.git) 2.12 | static, internal crypto, wpa2-psk and eap |
+| util-linux | upstream | static `sfdisk` (partitioning) |
+| dosfstools | upstream | static `mkfs.fat`, `fsck.fat` (esp) |
 | ubase extras | ours | `ifconfig`, `rdate` (sntp), `syslogd`, `logger` |
-| limine | host package | uefi bootloader |
+| limine 12.6 | upstream | bootloader; bios+uefi binaries vendored in `bootloader/` |
+
+wifi firmware blobs live in `firmware/`: intel 9000/9560/ax201/ax210/ax211,
+realtek rtw88/rtw89 and mediatek mt7921 - matching the drivers built into
+the kernel.
 
 everything is cross-compiled with clang against a private sysroot
-(`out/sysroot`) holding musl, the kernel uapi headers and the gcc runtime.
+(`out/sysroot`) holding musl, the kernel uapi headers and stub gcc
+runtime archives. every target binary is statically linked.
+
+## two ways to boot
+
+- **live (ram)**: kernel + initramfs only. nothing touches a disk. this is
+  what the iso boots; the installer runs from here.
+- **installed (disk)**: limine loads the kernel straight off the esp with
+  `root=PARTUUID=...`; the kernel mounts the ext4 root itself, no
+  initramfs involved. requires ext4 and all storage drivers built into
+  the kernel (they are).
 
 ## host requirements
 
 developed on alpine linux. you need:
 
 - `clang`, `llvm` (llvm-ar), `make`, `cpio`, `rsync`
+- `gcc` (runtime archives mirrored into the sysroot), `musl-cross` not
+  required - clang targets the sysroot directly
 - `util-linux` (sfdisk, losetup, blkid), `dosfstools`, `e2fsprogs`
-- `gcc` (its musl runtime gets mirrored into the sysroot)
-- `limine` and `ovmf` for disk images and uefi testing
-- `qemu-system-x86_64`
-- `doas` or sudo access for loop mounts during installation
+- `xorriso` (iso), `fakeroot` (root-owned initramfs)
+- `limine` cli tool (bios-install step of `make iso`)
+- `ovmf` and `qemu-system-x86_64` for testing
+- `doas` or sudo access for loop mounts during `make image`
 
 clone with submodules:
 
 ```
-git clone --recurse-submodules git@github.com:Arthur-Gusmao/slinux.git
+git clone --recurse-submodules https://github.com/Arthur-Gusmao/slinux.git
 cd slinux
 ```
 
 ## building
 
-run `make help` for the short version. the full pipeline:
+run `make help` for the short version. main targets:
 
 ```
-make            # musl -> headers -> userland -> rootfs -> initramfs
-make image      # also builds slinux.img, a bootable disk image
+make              # musl -> headers -> userland -> rootfs -> slinux.cpio.gz
+make kernel       # build the linux kernel from kernel/config
+make iso          # slinux.iso: hybrid bios+uefi live installer (~60m)
+make image        # slinux.img: gpt disk image with the system installed
+make clean        # remove build artifacts
 ```
 
-each stage only does its own work, so you can rebuild pieces in isolation
-(`make userland`, `make kernel`, ...).
+stages can be rebuilt in isolation (`make userland`, `make rootfs`,
+`make initramfs`, ...). builds are reproducible: everything is stamped
+with `SOURCE_DATE_EPOCH` from the last commit, the initramfs file list is
+sorted and packed under fakeroot so all files are uid 0/gid 0.
 
-## running
-
-boot the ram-only system (kernel + initramfs, nothing touches a disk):
-
-```
-make run
-```
-
-or boot the real thing, a disk image through uefi:
+## running in qemu
 
 ```
-make run-image
+make run              # live ram-only boot, serial console
+make run-iso          # boot slinux.iso through bios (seabios)
+make run-iso-uefi     # boot slinux.iso through uefi (ovmf)
+make run-image        # boot slinux.img through uefi (ovmf)
 ```
 
-login is `root` with an empty password. exit qemu with `ctrl-a x`.
+login is `root` with an empty password (just press enter). exit qemu with
+`ctrl-a x`.
 
-## installing
+## installing on real hardware (baremetal)
 
-`install.sh` writes slinux to an image file or a whole block device.
-it creates a gpt layout with an esp (kernel + limine) and an ext4 root
-partition, then copies the rootfs over:
+1. **build and write the usb stick**
+
+   ```
+   make iso
+   doas dd if=slinux.iso of=/dev/sdX bs=4M status=progress && sync
+   ```
+
+   the iso is hybrid: dd to a usb stick or burn to cd, both work.
+
+2. **boot the machine from the stick** via the firmware boot menu
+   (f12/f11/esc/del depending on vendor). pick the **uefi** entry -
+   the on-target installer requires uefi.
+
+3. **log in as root** (empty password) and install:
+
+   ```
+   ls /sys/block                 # find the target disk: sda, nvme0n1...
+   slinux-install /dev/sda       # double-check the name!
+   ```
+
+   confirm with `y`. the installer partitions the disk (gpt: 256mib esp +
+   ext4 root), formats both, copies the whole system over, installs the
+   limine bootloader and writes `limine.conf` with `root=PARTUUID=`.
+
+4. **reboot without the stick** - the system boots from disk.
+
+### after installing
+
+| what | how |
+|---|---|
+| root password | `passwd` (it ships empty; ssh refuses empty passwords) |
+| ssh access | dropbear already listens on :22; put keys in `/root/.ssh/authorized_keys` |
+| wired network | automatic (`sdhcp` at boot) |
+| wifi | create `/etc/wpa_supplicant.conf` and reboot; rc.init associates and dhcp's every wlan interface found |
+| clock | `rdate pool.ntp.org` |
+
+### bios-only machines
+
+the on-target installer is uefi-only. for machines without uefi, install
+from another linux box with this repository checked out:
 
 ```
-./install.sh slinux.img 256     # 256M disk image
-doas ./install.sh /dev/sdX      # real device - double check the name!
+./install.sh /dev/sdX           # writes gpt + limine bios stages directly
 ```
-
-for a removable drive you can also just `dd` a generated `slinux.img`.
-the machine must support uefi boot. on first boot limine shows a menu:
-`slinux` boots from the ext4 partition, `slinux rescue` boots the
-initramfs instead.
 
 ## repository layout
 
 ```
-kernel/linux    linux source (submodule)
-libc/musl       musl source (submodule)
-init/sinit      init (submodule)
-userland/       sbase, ubase, 9base, neatvi, zlib (submodules)
-shell/dash      dash (submodule)
-etc/            boot scripts and system files copied into the rootfs
-install.sh      disk installer
-Makefile        build orchestration
-out/            sysroot and scratch space (not tracked)
-rootfs/         generated root filesystem (not tracked)
+kernel/linux        linux source (submodule)
+kernel/config       our kernel configuration
+libc/musl           musl source (submodule)
+init/sinit          init (submodule)
+userland/           sbase, ubase, 9base, neatvi, zlib, bearssl,
+                    netbsd-curses, sdhcp, e2fsprogs, dropbear, hostap,
+                    util-linux, dosfstools (submodules)
+shell/dash          dash (submodule)
+etc/                boot scripts (rc.init), motd, services, fstab
+bin/slinux-install  on-target installer (runs from the live system)
+bootloader/limine   vendored limine 12.6 binaries (efi, bios stages)
+firmware/           wifi firmware blobs
+install.sh          host-side disk/image installer
+Makefile            build orchestration
+out/                sysroot and scratch space (not tracked)
+rootfs/             generated root filesystem (not tracked)
+slinux.iso/.img     build outputs (not tracked)
 ```
+
+## boot flow
+
+`sinit` (pid 1) spawns `/etc/rc.init`, which mounts proc/sys/dev, starts
+`syslogd`, sets the hostname, brings up loopback and dhcp on eth0, joins
+wifi networks if `/etc/wpa_supplicant.conf` exists, starts dropbear and
+respawns getty on ttyS0 and tty1. when booted with `root=` from the live
+initramfs, rc.init instead fscks and switch_roots into the real root
+first (see `etc/rc.init`).
+
+## limitations
+
+- x86_64 only.
+- no package manager, by design: rebuild from source or rsync files.
+- on-target installer wipes the whole disk; no dual boot, no custom
+  partitioning (edit `bin/slinux-install` if you need it).
+- wpa3/sae unsupported (internal crypto lacks bignum math); wpa2-psk and
+  common eap networks work.
+- uefi required for the on-target installer path (see above for bios).
 
 ## license
 
