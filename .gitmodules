@@ -72,15 +72,15 @@
 	ignore = all
 [submodule "userland/nldev"]
 	path = userland/nldev
-	url = git://r-36.net/nldev
+	url = git@github.com:Arthur-Gusmao/nldev.git
 	ignore = all
 [submodule "userland/svc"]
 	path = userland/svc
-	url = git://r-36.net/svc
+	url = git@github.com:Arthur-Gusmao/svc.git
 	ignore = all
 [submodule "userland/sup"]
 	path = userland/sup
-	url = https://github.com/dyne/sup
+	url = git@github.com:Arthur-Gusmao/sup.git
 	ignore = all
 [submodule "userland/curl"]
 	path = userland/curl

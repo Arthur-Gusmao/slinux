@@ -32,10 +32,10 @@ philosophy where practical: small tools, simple code, sane defaults.
 | util-linux | upstream | static `sfdisk` (partitioning) |
 | dosfstools | upstream | static `mkfs.fat`, `fsck.fat` (esp) |
 | ubase extras | ours | `ifconfig`, `rdate` (sntp), `syslogd`, `logger`, `ping` |
-| smdev | fork | device manager: `smdev -s` coldplug + rules in `etc/smdev-config.h` |
-| nldev | r-36.net | netlink hotplug daemon feeding uevents to smdev |
-| svc | r-36.net | service framework (`svc -s/-k/-r/-a/-d/-l`, `service start/stop/restart`) |
-| sup | dyne.org | hardcoded sudo; suid, rules compiled from `etc/sup-config.h` |
+| smdev | fork | device manager: `smdev -s` coldplug; slinux rules baked into the fork |
+| nldev | mirror | netlink hotplug daemon feeding uevents to smdev |
+| svc | mirror | service framework (`svc -s/-k/-r/-a/-d/-l`, `service start/stop/restart`) |
+| sup | fork | hardcoded sudo; suid, rules + getpath fix baked into the fork |
 | curl 8.14.1 | upstream | static https client over BearSSL (last release with the bearssl backend) |
 | limine 12.6 | upstream | bootloader; bios+uefi binaries vendored in `bootloader/` |
 
@@ -165,7 +165,8 @@ site-specific boot customisation belongs in `/etc/rc.local`
 ### privilege escalation with sup
 
 sup(8) is a setuid binary whose authorisation table is compiled in
-(`etc/sup-config.h`). rebuild with `make sup` after editing rules;
+(the fork's `config.def.h`). rebuild with `make sup` after editing
+rules;
 each rule pins a uid, command name and exact binary path, optionally a
 sha256. run `sup -l` to list what is allowed.
 

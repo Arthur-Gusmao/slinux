@@ -215,7 +215,7 @@ mkfsfat: musl
 smdev: musl
 	@test -d $(SMDEV_DIR) || { \
 		echo "$(SMDEV_DIR) missing: add the submodule first"; exit 1; }
-	cp -f etc/smdev-config.h $(SMDEV_DIR)/config.h
+	cp -f $(SMDEV_DIR)/config.def.h $(SMDEV_DIR)/config.h
 	$(MAKE) -C $(SMDEV_DIR) CC='$(CC)' LDFLAGS='-s -static'
 	mkdir -p $(ROOTFS)/bin
 	install -m755 $(SMDEV_DIR)/smdev $(ROOTFS)/bin/smdev
@@ -240,10 +240,6 @@ svc:
 sup: musl
 	@test -d $(SUP_DIR) || { \
 		echo "$(SUP_DIR) missing: add the submodule first"; exit 1; }
-	cp -f etc/sup-config.h $(SUP_DIR)/config.h
-	patch -d $(SUP_DIR) -p1 --forward -r- < etc/sup-0001-final-path-component.patch >/dev/null 2>&1 || true
-	test -n "$$(grep -c 'final PATH component' $(SUP_DIR)/sup.c 2>/dev/null)" || { \
-		echo "sup patch failed to apply"; exit 1; }
 	$(MAKE) -C $(SUP_DIR) CC='$(CC)' \
 		CFLAGS='-std=c99 -D_DEFAULT_SOURCE -Os -static' LDFLAGS='-static -s'
 	mkdir -p $(ROOTFS)/bin
