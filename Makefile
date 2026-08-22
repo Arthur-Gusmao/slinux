@@ -133,7 +133,7 @@ sdhcp: musl
 e2fsprogs: musl
 	@test -d $(E2FSPROGS_DIR) || { \
 		echo "$(E2FSPROGS_DIR) missing: add the submodule first"; exit 1; }
-	cd $(E2FSPROGS_DIR) && CC='$(CC)' ./configure --prefix=/usr \
+	cd $(E2FSPROGS_DIR) && CC='$(CC)' CFLAGS='-D_GNU_SOURCE -O2' ./configure --prefix=/usr \
 		--disable-nls --disable-shared --disable-e2scrub \
 		--disable-uuidd --disable-profile LDFLAGS='-s -static'
 	$(MAKE) -C $(E2FSPROGS_DIR) libs progs
@@ -178,6 +178,7 @@ wpasupplicant: musl
 		'CONFIG_INTERNAL_LIBTOMMATH=y' \
 		'CONFIG_CRYPTO_INTERNAL=y' \
 		> $(HOSTAP_DIR)/wpa_supplicant/.config
+	$(MAKE) -C $(HOSTAP_DIR)/wpa_supplicant clean >/dev/null 2>&1 || true
 	$(MAKE) -C $(HOSTAP_DIR)/wpa_supplicant CC='$(CC)' \
 		LDFLAGS='-s -static' BINDIR=/bin LIBDIR=/lib wpa_supplicant wpa_cli
 	mkdir -p $(ROOTFS)/bin
@@ -357,7 +358,7 @@ iso: initramfs $(LIMINE_TOOL)
 		bootloader/limine/limine-bios-cd.bin \
 		bootloader/limine/limine-uefi-cd.bin out/iso/
 	install -m644 bootloader/limine/BOOTX64.EFI out/iso/EFI/BOOT/
-	printf 'timeout: 5\n\n/slinux (live)\n    protocol: linux\n    path: boot():/vmlinuz\n    cmdline: console=ttyS0 console=tty0\n    module_path: boot():/initramfs.cpio.gz\n' \
+	printf 'timeout: 5\n\n/slinux (live)\n    protocol: linux\n    path: boot():/vmlinuz\n    cmdline: console=ttyS0 console=tty0\n    module_path: boot():/initramfs.cpio.gz\n\n/slinux (live, safe video)\n    protocol: linux\n    path: boot():/vmlinuz\n    cmdline: nomodeset console=ttyS0 console=tty0\n    module_path: boot():/initramfs.cpio.gz\n\n/slinux (debug shell)\n    protocol: linux\n    path: boot():/vmlinuz\n    cmdline: rdinit=/bin/sh console=ttyS0 console=tty0\n    module_path: boot():/initramfs.cpio.gz\n' \
 		> out/iso/limine.conf
 	xorriso -as mkisofs -r -J -V SLINUX_LIVE \
 		-b limine-bios-cd.bin -no-emul-boot -boot-load-size 4 \

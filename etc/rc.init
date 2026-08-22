@@ -84,11 +84,13 @@ syslogd
 
 hostname "$(cat /etc/hostname)"
 
-# network: loopback, then dhcp on the wired interface (sdhcp(8)
-# daemonizes and renews the lease; it also writes /etc/resolv.conf)
+# network: loopback, then dhcp on the wired interface. sdhcp(8) only
+# daemonizes after obtaining a lease and retries forever, so it must
+# never run in the foreground or boot would block without a dhcp
+# server (it also writes /etc/resolv.conf once bound)
 ifconfig lo 127.0.0.1 up
 ifconfig eth0 up
-sdhcp eth0
+(sdhcp eth0) >/dev/null 2>&1 &
 
 # wifi: join networks listed in /etc/wpa_supplicant.conf, if any
 if [ -f /etc/wpa_supplicant.conf ]; then
@@ -96,7 +98,7 @@ if [ -f /etc/wpa_supplicant.conf ]; then
 		[ -d "$wl" ] || continue
 		if=${wl#/sys/class/net/}
 		wpa_supplicant -B -i "$if" -c /etc/wpa_supplicant.conf
-		sdhcp "$if"
+		(sdhcp "$if") >/dev/null 2>&1 &
 	done
 fi
 
