@@ -44,7 +44,7 @@
 	ignore = all
 [submodule "userland/sdhcp"]
 	path = userland/sdhcp
-	url = https://git.2f30.org/sdhcp
+	url = git@github.com:Arthur-Gusmao/sdhcp.git
 	ignore = all
 [submodule "userland/e2fsprogs"]
 	path = userland/e2fsprogs
