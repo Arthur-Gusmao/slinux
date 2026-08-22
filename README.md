@@ -31,7 +31,12 @@ philosophy where practical: small tools, simple code, sane defaults.
 | wpa_supplicant | [hostap](https://w1.fi/hostap.git) 2.12 | static, internal crypto, wpa2-psk and eap |
 | util-linux | upstream | static `sfdisk` (partitioning) |
 | dosfstools | upstream | static `mkfs.fat`, `fsck.fat` (esp) |
-| ubase extras | ours | `ifconfig`, `rdate` (sntp), `syslogd`, `logger` |
+| ubase extras | ours | `ifconfig`, `rdate` (sntp), `syslogd`, `logger`, `ping` |
+| smdev | fork | device manager: `smdev -s` coldplug + rules in `etc/smdev-config.h` |
+| nldev | r-36.net | netlink hotplug daemon feeding uevents to smdev |
+| svc | r-36.net | service framework (`svc -s/-k/-r/-a/-d/-l`, `service start/stop/restart`) |
+| sup | dyne.org | hardcoded sudo; suid, rules compiled from `etc/sup-config.h` |
+| curl 8.14.1 | upstream | static https client over BearSSL (last release with the bearssl backend) |
 | limine 12.6 | upstream | bootloader; bios+uefi binaries vendored in `bootloader/` |
 
 wifi firmware blobs live in `firmware/`: intel 9000/9560/ax201/ax210/ax211,
@@ -137,6 +142,32 @@ login is `root` with an empty password (just press enter). exit qemu with
 | wired network | automatic (`sdhcp` at boot) |
 | wifi | create `/etc/wpa_supplicant.conf` and reboot; rc.init associates and dhcp's every wlan interface found |
 | clock | `rdate pool.ntp.org` |
+| https | `curl https://...` (bearssl, ca bundle at `/etc/ssl/cert.pem`) or `wget` |
+| icmp | `ping -c 3 host` |
+
+### services
+
+daemons are managed by svc(8); services live in `/bin/svc.d`, enabled
+ones are symlinked from `run/`. dropbear ships enabled:
+
+    svc -l              # list running services
+    svc -a foo          # enable a service (avail/foo must exist)
+    svc -s foo          # start
+    svc -k foo          # stop
+    svc -r foo          # restart
+    service stop sshd   # sysv-style alias: service start|stop|restart
+
+a service is either an executable script in `avail/` or an empty file
+(run the like-named binary with the params from `default/<name>`).
+site-specific boot customisation belongs in `/etc/rc.local`
+(create it; rc.init runs it last if executable).
+
+### privilege escalation with sup
+
+sup(8) is a setuid binary whose authorisation table is compiled in
+(`etc/sup-config.h`). rebuild with `make sup` after editing rules;
+each rule pins a uid, command name and exact binary path, optionally a
+sha256. run `sup -l` to list what is allowed.
 
 ### bios-only machines
 

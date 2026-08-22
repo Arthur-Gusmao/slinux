@@ -68,4 +68,21 @@
 	url = https://github.com/limine-bootloader/limine.git
 [submodule "userland/smdev"]
 	path = userland/smdev
-	url = https://git.suckless.org/smdev
+	url = git@github.com:Arthur-Gusmao/smdev.git
+	ignore = all
+[submodule "userland/nldev"]
+	path = userland/nldev
+	url = git://r-36.net/nldev
+	ignore = all
+[submodule "userland/svc"]
+	path = userland/svc
+	url = git://r-36.net/svc
+	ignore = all
+[submodule "userland/sup"]
+	path = userland/sup
+	url = https://github.com/dyne/sup
+	ignore = all
+[submodule "userland/curl"]
+	path = userland/curl
+	url = https://github.com/curl/curl.git
+	ignore = all

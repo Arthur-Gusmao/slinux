@@ -9,6 +9,13 @@ mountpoint -q /proc || mount -t proc proc /proc
 mountpoint -q /sys  || mount -t sysfs sys /sys
 mountpoint -q /dev  || mount -t devtmpfs dev /dev
 
+# device nodes: coldplug scan of sysfs, then the nldev(8) daemon feeds
+# hotplug uevents to smdev(8) for new devices
+if [ -x /bin/smdev ]; then
+	smdev -s
+	[ -x /bin/nldev ] && nldev -r /bin/smdev -b
+fi
+
 mkdir -p /var/run /var/log /mnt
 chmod 1777 /tmp
 
@@ -93,16 +100,23 @@ if [ -f /etc/wpa_supplicant.conf ]; then
 	done
 fi
 
-# ssh server: -R generates host keys on first connection.
+# ssh server via svc(8): -R generates host keys on first connection.
 # note: password auth requires a non-empty root password; set one with
 # passwd(1) or install a public key in /root/.ssh/authorized_keys
-if [ -x /bin/dropbear ]; then
+if [ -x /bin/svc ] && [ -e /bin/svc.d/avail/dropbear ]; then
+	mkdir -p /etc/dropbear /root/.ssh
+	chmod 700 /root/.ssh
+	svc -s dropbear
+elif [ -x /bin/dropbear ]; then
 	mkdir -p /etc/dropbear /root/.ssh
 	chmod 700 /root/.ssh
 	dropbear -R
 fi
 
 cat /etc/motd
+
+# site-specific customization hook (wifi, extra daemons, ...)
+[ -x /etc/rc.local ] && /etc/rc.local
 
 # console login, restarted automatically if the shell exits
 respawn getty /dev/ttyS0 linux &

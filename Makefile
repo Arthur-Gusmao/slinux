@@ -28,6 +28,11 @@ DROPBEAR_DIR  := userland/dropbear
 HOSTAP_DIR    := userland/hostap
 UTIL_LINUX_DIR := userland/util-linux
 DOSFSTOOLS_DIR  := userland/dosfstools
+SMDEV_DIR   := userland/smdev
+NLDEV_DIR   := userland/nldev
+SVC_DIR     := userland/svc
+SUP_DIR     := userland/sup
+CURL_DIR    := userland/curl
 FIRMWARE_DIR  := firmware
 LIMINE_TOOL    := /usr/bin/limine
 ZLIB_SRCS  := adler32 compress crc32 deflate gzclose gzlib gzread gzwrite \
@@ -52,6 +57,11 @@ help:
 	@echo "  make wpasupplicant  build wpa_supplicant/wpa_cli (static)"
 	@echo "  make sfdisk      build sfdisk (static, partitioning)"
 	@echo "  make mkfsfat     build mkfs.fat/fsck.fat (static)"
+	@echo "  make smdev       build smdev (device manager)"
+	@echo "  make nldev       build nldev/nltrigger (hotplug daemon)"
+	@echo "  make svc         install svc(8) service framework"
+	@echo "  make sup         build sup (hardcoded sudo, suid)"
+	@echo "  make curl        build curl (static, BearSSL TLS)"
 	@echo "  make rootfs      populate rootfs/ with binaries and etc files"
 	@echo "  make initramfs   pack rootfs/ into slinux.cpio.gz"
 	@echo "  make kernel      build the linux kernel"
@@ -91,9 +101,10 @@ bearssl: musl
 		echo "$(BEARSSL_DIR) missing: add the submodule first"; exit 1; }
 	$(MAKE) -C $(BEARSSL_DIR) CC='$(CC)' AR=llvm-ar LD='$(CC)' \
 		CFLAGS='-W -Wall -Os' LDFLAGS='-s -static' DLL=no TESTS=no lib tools
-	mkdir -p $(SYSROOT)/usr/include/bearssl $(ROOTFS)/bin
+	mkdir -p $(SYSROOT)/usr/include $(ROOTFS)/bin
 	cp -f $(BEARSSL_DIR)/inc/bearssl.h $(BEARSSL_DIR)/inc/bearssl_*.h \
-		$(SYSROOT)/usr/include/bearssl/
+		$(SYSROOT)/usr/include/
+	cp -f $(BEARSSL_DIR)/build/libbearssl.a $(SYSROOT)/usr/lib/
 	cp -f $(BEARSSL_DIR)/build/libbearssl.a $(SYSROOT)/usr/lib/
 	install -m755 $(BEARSSL_DIR)/build/brssl $(ROOTFS)/bin/brssl
 
@@ -201,7 +212,60 @@ mkfsfat: musl
 	install -m755 $(DOSFSTOOLS_DIR)/src/mkfs.fat $(ROOTFS)/bin/mkfs.fat
 	install -m755 $(DOSFSTOOLS_DIR)/src/fsck.fat $(ROOTFS)/bin/fsck.fat
 
-userland: musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat
+smdev: musl
+	@test -d $(SMDEV_DIR) || { \
+		echo "$(SMDEV_DIR) missing: add the submodule first"; exit 1; }
+	cp -f etc/smdev-config.h $(SMDEV_DIR)/config.h
+	$(MAKE) -C $(SMDEV_DIR) CC='$(CC)' LDFLAGS='-s -static'
+	mkdir -p $(ROOTFS)/bin
+	install -m755 $(SMDEV_DIR)/smdev $(ROOTFS)/bin/smdev
+
+nldev: musl
+	@test -d $(NLDEV_DIR) || { \
+		echo "$(NLDEV_DIR) missing: add the submodule first"; exit 1; }
+	$(MAKE) -C $(NLDEV_DIR) CC='$(CC)' INCS='-I.' LIBS='-lc' \
+		LDFLAGS='-static -s'
+	mkdir -p $(ROOTFS)/bin
+	install -m755 $(NLDEV_DIR)/nldev $(ROOTFS)/bin/nldev
+	install -m755 $(NLDEV_DIR)/nltrigger $(ROOTFS)/bin/nltrigger
+
+svc:
+	@test -d $(SVC_DIR) || { \
+		echo "$(SVC_DIR) missing: add the submodule first"; exit 1; }
+	mkdir -p $(ROOTFS)/bin/svc.d/avail $(ROOTFS)/bin/svc.d/default \
+		$(ROOTFS)/bin/svc.d/run
+	install -m755 $(SVC_DIR)/bin/svc $(SVC_DIR)/bin/service $(ROOTFS)/bin/
+	install -m755 $(SVC_DIR)/svc.d/bare.sh $(ROOTFS)/bin/svc.d/
+
+sup: musl
+	@test -d $(SUP_DIR) || { \
+		echo "$(SUP_DIR) missing: add the submodule first"; exit 1; }
+	cp -f etc/sup-config.h $(SUP_DIR)/config.h
+	patch -d $(SUP_DIR) -p1 --forward -r- < etc/sup-0001-final-path-component.patch >/dev/null 2>&1 || true
+	test -n "$$(grep -c 'final PATH component' $(SUP_DIR)/sup.c 2>/dev/null)" || { \
+		echo "sup patch failed to apply"; exit 1; }
+	$(MAKE) -C $(SUP_DIR) CC='$(CC)' \
+		CFLAGS='-std=c99 -D_DEFAULT_SOURCE -Os -static' LDFLAGS='-static -s'
+	mkdir -p $(ROOTFS)/bin
+	install -m4755 $(SUP_DIR)/sup $(ROOTFS)/bin/sup
+
+curl: musl bearssl
+	@test -d $(CURL_DIR) || { \
+		echo "$(CURL_DIR) missing: add the submodule first"; exit 1; }
+	cd $(CURL_DIR) && PATH=/usr/bin:/bin autoreconf -fi >/dev/null 2>&1
+	cd $(CURL_DIR) && PATH=/usr/bin:/bin ./configure --host=x86_64-linux-musl \
+		--prefix=/usr --disable-shared --enable-static \
+		--with-bearssl=$(SYSROOT) --without-openssl --without-zlib \
+		--without-libpsl --without-libidn2 --without-nghttp2 \
+		--without-brotli --without-zstd --without-libssh2 --disable-ldap \
+		--disable-ldaps --enable-optimize=-Os --disable-manual \
+		--disable-dependency-tracking --with-ca-bundle=/etc/ssl/cert.pem \
+		CC='$(CC)' LD='$(CC)' CFLAGS='-Os' LDFLAGS='-static'
+	$(MAKE) -C $(CURL_DIR) -j$$(nproc) LDFLAGS='-all-static'
+	mkdir -p $(ROOTFS)/bin
+	install -m755 $(CURL_DIR)/src/curl $(ROOTFS)/bin/curl
+
+userland: musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat smdev nldev svc sup curl
 	$(MAKE) -C $(INIT_DIRS) CC='$(CC)'
 	$(MAKE) -C $(INIT_DIRS) install DESTDIR=$(ROOTFS) PREFIX=/
 	mv -f $(ROOTFS)/bin/sinit $(ROOTFS)/bin/init
@@ -259,6 +323,9 @@ ifneq ($(wildcard $(BZIMAGE)),)
 	install -m644 $(BZIMAGE) $(ROOTFS)/boot/vmlinuz
 endif
 	install -m755 etc/rc.init etc/rc.shutdown $(ROOTFS)/bin/
+	mkdir -p $(ROOTFS)/bin/svc.d/run
+	cp -a etc/svc.d/avail etc/svc.d/default $(ROOTFS)/bin/svc.d/
+	ln -sf ../avail/dropbear $(ROOTFS)/bin/svc.d/run/dropbear
 	ln -sf dash $(ROOTFS)/bin/sh
 	ln -sf /bin/init $(ROOTFS)/sbin/init
 	ln -sf /bin/init $(ROOTFS)/init

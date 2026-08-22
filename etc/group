@@ -1,1 +1,9 @@
 root::0:
+tty::5:
+disk::6:
+lp::7:
+cdrom::11:
+kmem::15:
+audio::29:
+video::44:
+input::97:

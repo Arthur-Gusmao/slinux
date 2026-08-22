@@ -1,0 +1,15 @@
+diff --git a/sup.c b/sup.c
+index 7957495..e242d36 100644
+--- a/sup.c
++++ b/sup.c
+@@ -115,6 +115,10 @@ static char *getpath(const char *str) {
+                 path = p+1;
+             }
+         }
++    /* check the final PATH component as well */
++    snprintf (file, sizeof (file)-1, "%s/%s", path, str);
++    if (!lstat (file, &st))
++        return file;
+     return NULL;
+ }
+ 
