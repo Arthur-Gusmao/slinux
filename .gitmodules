@@ -1,59 +1,59 @@
 [submodule "kernel/linux"]
 	path = kernel/linux
 	url = https://github.com/torvalds/linux
-	ignore = dirty
+	ignore = all
 [submodule "init/sinit"]
 	path = init/sinit
 	url = git@github.com:Arthur-Gusmao/sinit.git
-	ignore = dirty
+	ignore = all
 [submodule "userland/9base"]
 	path = userland/9base
 	url = git@github.com:Arthur-Gusmao/9base.git
-	ignore = dirty
+	ignore = all
 [submodule "userland/sbase"]
 	path = userland/sbase
 	url = git@github.com:Arthur-Gusmao/sbase.git
-	ignore = dirty
+	ignore = all
 [submodule "userland/ubase"]
 	path = userland/ubase
 	url = git@github.com:Arthur-Gusmao/ubase.git
-	ignore = dirty
+	ignore = all
 [submodule "libc/musl"]
 	path = libc/musl
 	url = https://github.com/kraj/musl.git
-	ignore = dirty
+	ignore = all
 [submodule "shell/dash"]
 	path = shell/dash
 	url = https://git.kernel.org/pub/scm/utils/dash/dash.git
-	ignore = dirty
+	ignore = all
 [submodule "userland/neatvi"]
 	path = userland/neatvi
 	url = git@github.com:aligrudi/neatvi.git
-	ignore = dirty
+	ignore = all
 [submodule "userland/zlib"]
 	path = userland/zlib
 	url = git@github.com:madler/zlib.git
-	ignore = dirty
+	ignore = all
 [submodule "userland/bearssl"]
 	path = userland/bearssl
 	url = https://www.bearssl.org/git/BearSSL
-	ignore = dirty
+	ignore = all
 [submodule "userland/netbsd-curses"]
 	path = userland/netbsd-curses
 	url = https://github.com/sabotage-linux/netbsd-curses.git
-	ignore = dirty
+	ignore = all
 [submodule "userland/sdhcp"]
 	path = userland/sdhcp
 	url = https://git.2f30.org/sdhcp
-	ignore = dirty
+	ignore = all
 [submodule "userland/e2fsprogs"]
 	path = userland/e2fsprogs
 	url = https://git.kernel.org/pub/scm/fs/ext2/e2fsprogs.git
-	ignore = dirty
+	ignore = all
 [submodule "userland/dropbear"]
 	path = userland/dropbear
 	url = https://github.com/mkj/dropbear.git
-	ignore = dirty
+	ignore = all
 [submodule "userland/hostap"]
 	path = userland/hostap
 	url = https://w1.fi/hostap.git

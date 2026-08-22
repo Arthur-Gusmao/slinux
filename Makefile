@@ -6,6 +6,7 @@ ROOTFS    := $(ROOT)/rootfs
 INITRAMFS := $(ROOT)/slinux.cpio.gz
 BZIMAGE   := $(ROOT)/kernel/linux/arch/x86/boot/bzImage
 IMAGE     := $(ROOT)/slinux.img
+ISO       := $(ROOT)/slinux.iso
 
 CC := clang --target=x86_64-linux-musl --sysroot=$(SYSROOT)
 
@@ -28,10 +29,11 @@ HOSTAP_DIR    := userland/hostap
 UTIL_LINUX_DIR := userland/util-linux
 DOSFSTOOLS_DIR  := userland/dosfstools
 FIRMWARE_DIR  := firmware
+LIMINE_TOOL    := /usr/bin/limine
 ZLIB_SRCS  := adler32 compress crc32 deflate gzclose gzlib gzread gzwrite \
 	infback inffast inflate inftrees trees uncompr zutil
 
-.PHONY: all musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat userland rootfs initramfs run image run-image kernel clean help
+.PHONY: iso run-iso run-iso-uefi all musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat userland rootfs initramfs run image run-image kernel clean help
 
 all: initramfs
 
@@ -51,6 +53,9 @@ help:
 	@echo "  make initramfs   pack rootfs/ into slinux.cpio.gz"
 	@echo "  make kernel      build the linux kernel"
 	@echo "  make image       build slinux.img (gpt: esp + ext4 root)"
+	@echo "  make iso         build slinux.iso (hybrid bios+uefi live installer)"
+	@echo "  make run-iso     boot slinux.iso in qemu (bios)"
+	@echo "  make run-iso-uefi boot slinux.iso in qemu (uefi)"
 	@echo
 	@echo "run targets:"
 	@echo "  make run         boot the initramfs in qemu, serial console"
@@ -246,6 +251,10 @@ rootfs: userland
 	install -m755 bin/slinux-install $(ROOTFS)/bin/slinux-install
 	install -m644 bootloader/limine/BOOTX64.EFI \
 		bootloader/limine/limine-bios.sys $(ROOTFS)/lib/limine/
+ifneq ($(wildcard $(BZIMAGE)),)
+	mkdir -p $(ROOTFS)/boot
+	install -m644 $(BZIMAGE) $(ROOTFS)/boot/vmlinuz
+endif
 	install -m755 etc/rc.init etc/rc.shutdown $(ROOTFS)/bin/
 	ln -sf dash $(ROOTFS)/bin/sh
 	ln -sf /bin/init $(ROOTFS)/sbin/init
@@ -269,6 +278,36 @@ run-image: image
 		-drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd \
 		-drive if=pflash,format=raw,file=out/OVMF_VARS.fd \
 		-drive file=$(IMAGE),format=raw,if=virtio -nographic
+
+# hybrid iso: boots on bios (el torito) and uefi (embedded efi image);
+# dd-able to usb sticks as well. the live system ships slinux-install(8)
+iso: initramfs $(LIMINE_TOOL)
+	@command -v xorriso >/dev/null || { echo "xorriso missing"; exit 1; }
+	rm -rf out/iso && mkdir -p out/iso
+	cp $(BZIMAGE) out/iso/vmlinuz
+	cp $(INITRAMFS) out/iso/initramfs.cpio.gz
+	install -m644 bootloader/limine/limine-bios.sys \
+		bootloader/limine/limine-bios-cd.bin \
+		bootloader/limine/limine-uefi-cd.bin out/iso/
+	printf 'timeout: 5\n\n/slinux (live)\n    protocol: linux\n    path: boot():/vmlinuz\n    cmdline: console=ttyS0 console=tty0\n    module_path: boot():/initramfs.cpio.gz\n' \
+		> out/iso/limine.conf
+	xorriso -as mkisofs -R -J -V SLINUX_LIVE \
+		-b limine-bios-cd.bin -no-emul-boot -boot-load-size 4 \
+		-boot-info-table --protective-msdos-label \
+		--efi-boot limine-uefi-cd.bin -efi-boot-part --efi-boot-image \
+		out/iso -o $(ISO)
+	$(LIMINE_TOOL) bios-install $(ISO)
+	@echo "wrote $(ISO)"
+
+run-iso: iso
+	qemu-system-x86_64 -m 768M -cdrom $(ISO) -nographic -no-reboot
+
+run-iso-uefi: iso
+	@test -f out/OVMF_VARS.fd || cp /usr/share/OVMF/OVMF_VARS.fd out/OVMF_VARS.fd
+	qemu-system-x86_64 -m 768M \
+		-drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE.fd \
+		-drive if=pflash,format=raw,file=out/OVMF_VARS.fd \
+		-cdrom $(ISO) -nographic -no-reboot
 
 kernel:
 	cp kernel/config kernel/linux/.config

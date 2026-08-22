@@ -1,9 +1,11 @@
 #!/bin/sh
 # slinux-install(8) - install slinux onto a disk from the running system.
 # usage: slinux-install <disk> [esp-size-mib]
-# the kernel and initramfs are taken from the boot medium (the vfat
-# partition holding vmlinuz and initramfs.cpio.gz), which must still be
-# attached. uefi systems only; for bios boot use install.sh from a host.
+#
+# the kernel normally comes from /boot/vmlinuz (embedded in the live
+# initramfs); the rescue initramfs is searched on the boot medium (cd,
+# usb stick) if one can be found, otherwise the rescue menu entry is
+# omitted. installs are uefi-only; for bios use install.sh from a host.
 
 set -eu
 
@@ -14,6 +16,8 @@ ESPSZ=${2:-256}
 [ -b "$DISK" ] || { echo "slinux-install: not a block device: $DISK" >&2; exit 1; }
 [ -f /lib/limine/BOOTX64.EFI ] || {
 	echo "slinux-install: /lib/limine/BOOTX64.EFI missing" >&2; exit 1; }
+[ -f /boot/vmlinuz ] || {
+	echo "slinux-install: no kernel found at /boot/vmlinuz" >&2; exit 1; }
 
 echo "WARNING: all data on $DISK will be destroyed."
 printf 'Continue? [y/N] '
@@ -26,32 +30,29 @@ esac
 P=$DISK
 case $DISK in *nvme* | *mmcblk*) P=$DISK'p' ;; esac
 
-# locate vmlinuz + initramfs on the boot medium
-BOOTPART=
+# search the boot medium (cd-rom, usb stick, ...) for a rescue initramfs;
+# any newer vmlinuz found there wins over the embedded copy
+KERNEL=/boot/vmlinuz
+INITRD=
 mkdir -p /tmp/bm
 for sysdev in /sys/block/*/* /sys/block/*; do
 	[ -e "$sysdev/dev" ] || continue
 	dev=/dev/${sysdev##*/}
-	case $dev in
-	*/loop* | */ram* | */sr* | */fd*) continue ;;
-	esac
-	case $dev in
-	"$P"1 | "$P"2 | $P) continue ;;
-	esac
-	mount -t vfat -o ro "$dev" /tmp/bm 2>/dev/null || mount -t ext4 -o ro \
-		"$dev" /tmp/bm 2>/dev/null || continue
-	if [ -f /tmp/bm/vmlinuz ] && [ -f /tmp/bm/initramfs.cpio.gz ]; then
-		BOOTPART=$dev
-		break
-	fi
-	umount /tmp/bm
+	case $dev in */loop* | */ram* | */fd* | */zram*) continue ;; esac
+	case $dev in $DISK | "$P"1 | "$P"2 | "$P"3 | "$P"4) continue ;; esac
+	for fs in iso9660 vfat ext4; do
+		mount -t $fs -o ro "$dev" /tmp/bm 2>/dev/null || continue
+		if [ -z "$INITRD" ] && [ -f /tmp/bm/initramfs.cpio.gz ]; then
+			INITRD=/tmp/bm/initramfs.cpio.gz
+			echo "boot medium: $dev ($fs)"
+		fi
+		if [ -f /tmp/bm/vmlinuz ]; then KERNEL=/tmp/bm/vmlinuz; fi
+		if [ -n "$INITRD" ]; then break 2; fi
+		umount /tmp/bm
+	done
 done
-[ -n "$BOOTPART" ] || {
-	echo "slinux-install: no boot medium found (need a partition with" >&2
-	echo "vmlinuz and initramfs.cpio.gz, e.g. the usb stick you booted)" >&2
-	exit 1
-}
-echo "boot medium: $BOOTPART"
+[ -n "$INITRD" ] || echo "note: boot medium not found, installing without rescue entry"
+trap 'umount /tmp/bm 2>/dev/null' EXIT INT TERM
 
 echo "partitioning $DISK (gpt: esp + root)"
 sfdisk "$DISK" <<EOF
@@ -94,29 +95,27 @@ touch /mnt/root/.slinux-installed
 echo "installing bootloader"
 ESP=/mnt/root/boot/efi
 mkdir -p $ESP/EFI/BOOT
-cp /tmp/bm/vmlinuz $ESP/vmlinuz
-cp /tmp/bm/initramfs.cpio.gz $ESP/initramfs.cpio.gz
+cp $KERNEL $ESP/vmlinuz
 cp /lib/limine/BOOTX64.EFI $ESP/EFI/BOOT/
 cp /lib/limine/limine-bios.sys /mnt/root/boot/
 
 PU=$(sfdisk -d "$DISK" 2>/dev/null | grep "^$P"2 | sed -n 's/.*uuid=\([^,]*\).*/\1/p')
 [ -n "$PU" ] || { echo "slinux-install: cannot read PARTUUID of $P"2 >&2; exit 1; }
 
-cat >$ESP/EFI/BOOT/limine.conf <<EOF
-timeout: 3
-
-/slinux
-    protocol: linux
-    path: boot():/vmlinuz
-    cmdline: root=PARTUUID=$PU rw rootwait console=ttyS0 console=tty0
-
-/slinux rescue (live ram)
-    protocol: linux
-    path: boot():/vmlinuz
-    module_path: boot():/initramfs.cpio.gz
-EOF
+{
+	printf 'timeout: 3\n\n'
+	printf '/slinux\n    protocol: linux\n    path: boot():/vmlinuz\n'
+	printf '    cmdline: root=PARTUUID=%s rw rootwait console=ttyS0 console=tty0\n' "$PU"
+	if [ -n "$INITRD" ]; then
+		cp $INITRD $ESP/initramfs.cpio.gz
+		printf '\n/slinux rescue (live ram)\n    protocol: linux\n'
+		printf '    path: boot():/vmlinuz\n'
+		printf '    module_path: boot():/initramfs.cpio.gz\n'
+	fi
+} >$ESP/EFI/BOOT/limine.conf
 
 sync
-umount $ESP /mnt/root /tmp/bm
+umount $ESP /mnt/root
 trap - EXIT INT TERM
+umount /tmp/bm 2>/dev/null
 echo "done: slinux installed on $DISK (root=PARTUUID=$PU)"

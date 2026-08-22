@@ -2,3 +2,6 @@
 /rootfs/
 *.cpio.gz
 *.img
+slinux.iso
+slinux.img
+*.cpio.gz
