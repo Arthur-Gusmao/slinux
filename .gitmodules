@@ -36,7 +36,7 @@
 	ignore = all
 [submodule "userland/bearssl"]
 	path = userland/bearssl
-	url = https://www.bearssl.org/git/BearSSL
+	url = git@github.com:Arthur-Gusmao/bearssl.git
 	ignore = all
 [submodule "userland/netbsd-curses"]
 	path = userland/netbsd-curses
