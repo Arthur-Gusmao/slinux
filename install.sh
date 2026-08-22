@@ -54,6 +54,7 @@ doas mount "$PARTS"1 "$ESPMNT"
 
 echo "copying rootfs"
 doas cp -a "$ROOT"/rootfs/. "$ROOTMNT"/
+doas touch "$ROOTMNT"/.slinux-installed
 
 echo "installing limine and kernel"
 doas mkdir -p "$ESPMNT"/EFI/BOOT

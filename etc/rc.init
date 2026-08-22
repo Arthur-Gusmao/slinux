@@ -9,8 +9,68 @@ mountpoint -q /proc || mount -t proc proc /proc
 mountpoint -q /sys  || mount -t sysfs sys /sys
 mountpoint -q /dev  || mount -t devtmpfs dev /dev
 
-mkdir -p /var/run /var/log
+mkdir -p /var/run /var/log /mnt
 chmod 1777 /tmp
+
+# disk-root mode: booted with root=... pointing at a real filesystem.
+# the live system (initramfs) mounts it and switch_root(8)s into it; on
+# an installed system /.slinux-installed exists and this step is skipped.
+# root= accepts /dev/node, PARTUUID=<gpt uuid> or UUID=<filesystem uuid>.
+ROOT=
+for p in $(cat /proc/cmdline); do
+	case $p in root=*) ROOT=${p#root=} ;; esac
+done
+
+resolve_root() {
+	kind=$1 want=$2
+	: >/tmp/.rootdev
+	for d in /sys/block/*; do
+		dev=${d##*/}
+		case $dev in loop* | ram* | sr* | fd* | dm-* | zram*) continue ;; esac
+		sfdisk -d /dev/$dev 2>/dev/null | while IFS= read -r line; do
+			case $line in
+			/dev/*) ;;
+			*) continue ;;
+			esac
+			part=${line%% *}
+			uuid=${line##*uuid=}
+			uuid=${uuid%%,*}
+			if [ "$uuid" = "$want" ]; then
+				if [ "$kind" = partuuid ] || tune2fs -l "$part" 2>/dev/null |
+					grep -qi "filesystem uuid.*$want"; then
+					echo "$part" >>/tmp/.rootdev
+				fi
+			fi
+			done
+	done
+	[ -s /tmp/.rootdev ] && { read -r ROOT </tmp/.rootdev; return 0; }
+	return 1
+}
+
+if [ -n "$ROOT" ] && [ ! -e /.slinux-installed ]; then
+	case $ROOT in
+	PARTUUID=*) resolve_root partuuid "${ROOT#PARTUUID=}" || {
+		echo "slinux: no partition with ${ROOT}, dropping to shell"
+		exec /bin/sh
+	} ;;
+	UUID=*) resolve_root uuid "${ROOT#UUID=}" || {
+		echo "slinux: no filesystem with ${ROOT}, dropping to shell"
+		exec /bin/sh
+	} ;;
+	esac
+	fsck.ext4 -p "$ROOT"
+	mkdir -p /newroot
+	mount -t ext4 "$ROOT" /newroot || {
+		echo "slinux: cannot mount root=$ROOT, dropping to shell"
+		exec /bin/sh
+	}
+	touch /newroot/.slinux-installed
+	mount --move /proc  /newroot/proc  || mount -t proc proc /newroot/proc
+	mount --move /sys   /newroot/sys   || mount -t sysfs sys /newroot/sys
+	mount --move /dev   /newroot/dev   || mount -t devtmpfs dev /newroot/dev
+	echo "slinux: switching to real root $ROOT"
+	exec switch_root /newroot /bin/init
+fi
 
 # system logging (syslogd(8) daemonizes)
 syslogd
@@ -22,6 +82,16 @@ hostname "$(cat /etc/hostname)"
 ifconfig lo 127.0.0.1 up
 ifconfig eth0 up
 sdhcp eth0
+
+# wifi: join networks listed in /etc/wpa_supplicant.conf, if any
+if [ -f /etc/wpa_supplicant.conf ]; then
+	for wl in /sys/class/net/wlan*; do
+		[ -d "$wl" ] || continue
+		if=${wl#/sys/class/net/}
+		wpa_supplicant -B -i "$if" -c /etc/wpa_supplicant.conf
+		sdhcp "$if"
+	done
+fi
 
 # ssh server: -R generates host keys on first connection.
 # note: password auth requires a non-empty root password; set one with

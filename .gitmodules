@@ -54,3 +54,15 @@
 	path = userland/dropbear
 	url = https://github.com/mkj/dropbear.git
 	ignore = dirty
+[submodule "userland/hostap"]
+	path = userland/hostap
+	url = https://w1.fi/hostap.git
+[submodule "userland/util-linux"]
+	path = userland/util-linux
+	url = https://github.com/util-linux/util-linux.git
+[submodule "userland/dosfstools"]
+	path = userland/dosfstools
+	url = https://github.com/dosfstools/dosfstools.git
+[submodule "userland/limine"]
+	path = userland/limine
+	url = https://github.com/limine-bootloader/limine.git

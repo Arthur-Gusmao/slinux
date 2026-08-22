@@ -1,0 +1,122 @@
+#!/bin/sh
+# slinux-install(8) - install slinux onto a disk from the running system.
+# usage: slinux-install <disk> [esp-size-mib]
+# the kernel and initramfs are taken from the boot medium (the vfat
+# partition holding vmlinuz and initramfs.cpio.gz), which must still be
+# attached. uefi systems only; for bios boot use install.sh from a host.
+
+set -eu
+
+[ $# -ge 1 ] || { echo "usage: slinux-install <disk> [esp-size-mib]" >&2; exit 2; }
+DISK=$1
+ESPSZ=${2:-256}
+
+[ -b "$DISK" ] || { echo "slinux-install: not a block device: $DISK" >&2; exit 1; }
+[ -f /lib/limine/BOOTX64.EFI ] || {
+	echo "slinux-install: /lib/limine/BOOTX64.EFI missing" >&2; exit 1; }
+
+echo "WARNING: all data on $DISK will be destroyed."
+printf 'Continue? [y/N] '
+read ans
+case $ans in
+y | Y | yes | YES) ;;
+*) echo "aborted"; exit 1 ;;
+esac
+
+P=$DISK
+case $DISK in *nvme* | *mmcblk*) P=$DISK'p' ;; esac
+
+# locate vmlinuz + initramfs on the boot medium
+BOOTPART=
+mkdir -p /tmp/bm
+for sysdev in /sys/block/*/* /sys/block/*; do
+	[ -e "$sysdev/dev" ] || continue
+	dev=/dev/${sysdev##*/}
+	case $dev in
+	*/loop* | */ram* | */sr* | */fd*) continue ;;
+	esac
+	case $dev in
+	"$P"1 | "$P"2 | $P) continue ;;
+	esac
+	mount -t vfat -o ro "$dev" /tmp/bm 2>/dev/null || mount -t ext4 -o ro \
+		"$dev" /tmp/bm 2>/dev/null || continue
+	if [ -f /tmp/bm/vmlinuz ] && [ -f /tmp/bm/initramfs.cpio.gz ]; then
+		BOOTPART=$dev
+		break
+	fi
+	umount /tmp/bm
+done
+[ -n "$BOOTPART" ] || {
+	echo "slinux-install: no boot medium found (need a partition with" >&2
+	echo "vmlinuz and initramfs.cpio.gz, e.g. the usb stick you booted)" >&2
+	exit 1
+}
+echo "boot medium: $BOOTPART"
+
+echo "partitioning $DISK (gpt: esp + root)"
+sfdisk "$DISK" <<EOF
+label: gpt
+name="esp", size=${ESPSZ}MiB, type=uefi
+name="root", type=linux
+EOF
+
+echo "creating filesystems"
+# devtmpfs recreates partition nodes asynchronously after sfdisk's
+# re-read ioctl; wait for them before touching the filesystems
+i=0
+until [ -b "$P"1 ] && [ -b "$P"2 ]; do
+	i=$((i + 1))
+	[ "$i" -gt 15 ] && { echo "slinux-install: partitions never appeared" >&2; exit 1; }
+	sleep 1
+done
+mkfs.fat -F32 -n SLINUX "$P"1 >/dev/null
+mke2fs -F -q -t ext4 -L slinux "$P"2
+
+mkdir -p /mnt/root
+mount -t ext4 "$P"2 /mnt/root
+trap 'umount /mnt/root/boot/efi /mnt/root /tmp/bm 2>/dev/null' EXIT INT TERM
+# the esp mountpoint must live inside the freshly mounted rootfs
+mkdir -p /mnt/root/boot/efi
+mount -t vfat "$P"1 /mnt/root/boot/efi
+
+echo "copying system"
+cd /
+SRCDIRS=
+for d in bin etc lib sbin usr var share root; do
+	[ -d "$d" ] && SRCDIRS="$SRCDIRS $d"
+done
+# shellcheck disable=SC2086
+tar cf - $SRCDIRS | tar xf - -C /mnt/root
+mkdir -p /mnt/root/tmp /mnt/root/mnt /mnt/root/dev /mnt/root/proc /mnt/root/sys
+chmod 1777 /mnt/root/tmp
+touch /mnt/root/.slinux-installed
+
+echo "installing bootloader"
+ESP=/mnt/root/boot/efi
+mkdir -p $ESP/EFI/BOOT
+cp /tmp/bm/vmlinuz $ESP/vmlinuz
+cp /tmp/bm/initramfs.cpio.gz $ESP/initramfs.cpio.gz
+cp /lib/limine/BOOTX64.EFI $ESP/EFI/BOOT/
+cp /lib/limine/limine-bios.sys /mnt/root/boot/
+
+PU=$(sfdisk -d "$DISK" 2>/dev/null | grep "^$P"2 | sed -n 's/.*uuid=\([^,]*\).*/\1/p')
+[ -n "$PU" ] || { echo "slinux-install: cannot read PARTUUID of $P"2 >&2; exit 1; }
+
+cat >$ESP/EFI/BOOT/limine.conf <<EOF
+timeout: 3
+
+/slinux
+    protocol: linux
+    path: boot():/vmlinuz
+    cmdline: root=PARTUUID=$PU rw rootwait console=ttyS0 console=tty0
+
+/slinux rescue (live ram)
+    protocol: linux
+    path: boot():/vmlinuz
+    module_path: boot():/initramfs.cpio.gz
+EOF
+
+sync
+umount $ESP /mnt/root /tmp/bm
+trap - EXIT INT TERM
+echo "done: slinux installed on $DISK (root=PARTUUID=$PU)"

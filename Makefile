@@ -24,10 +24,14 @@ CURSES_DIR  := userland/netbsd-curses
 SDHCP_DIR   := userland/sdhcp
 E2FSPROGS_DIR := userland/e2fsprogs
 DROPBEAR_DIR  := userland/dropbear
+HOSTAP_DIR    := userland/hostap
+UTIL_LINUX_DIR := userland/util-linux
+DOSFSTOOLS_DIR  := userland/dosfstools
+FIRMWARE_DIR  := firmware
 ZLIB_SRCS  := adler32 compress crc32 deflate gzclose gzlib gzread gzwrite \
 	infback inffast inflate inftrees trees uncompr zutil
 
-.PHONY: all musl headers bearssl curses sdhcp e2fsprogs dropbear userland rootfs initramfs run image run-image kernel clean help
+.PHONY: all musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat userland rootfs initramfs run image run-image kernel clean help
 
 all: initramfs
 
@@ -141,7 +145,55 @@ dropbear: musl
 		ln -sf dropbearmulti $(ROOTFS)/bin/$$t; done
 	ln -sf dbclient $(ROOTFS)/bin/ssh
 
-userland: musl headers bearssl curses sdhcp e2fsprogs dropbear
+wpasupplicant: musl
+	@test -d $(HOSTAP_DIR) || { \
+		echo "$(HOSTAP_DIR) missing: add the submodule first"; exit 1; }
+	cp /dev/null $(HOSTAP_DIR)/wpa_supplicant/.config
+	printf '%s\n' \
+		'CONFIG_BACKEND=file' \
+		'CONFIG_CTRL_IFACE=y' \
+		'CONFIG_IEEE8021X_EAPOL=y' \
+		'CONFIG_EAP_PEAP=y' 'CONFIG_EAP_MSCHAPV2=y' \
+		'CONFIG_EAP_TTLS=y' 'CONFIG_EAP_TLS=y' \
+		'CONFIG_TLS=internal' \
+		'CONFIG_INTERNAL_LIBTOMMATH=y' \
+		'CONFIG_CRYPTO_INTERNAL=y' \
+		> $(HOSTAP_DIR)/wpa_supplicant/.config
+	$(MAKE) -C $(HOSTAP_DIR)/wpa_supplicant CC='$(CC)' \
+		LDFLAGS='-s -static' BINDIR=/bin LIBDIR=/lib wpa_supplicant wpa_cli
+	mkdir -p $(ROOTFS)/bin
+	install -m755 $(HOSTAP_DIR)/wpa_supplicant/wpa_supplicant \
+		$(HOSTAP_DIR)/wpa_supplicant/wpa_cli $(ROOTFS)/bin/
+
+sfdisk: musl
+	@test -d $(UTIL_LINUX_DIR) || { \
+		echo "$(UTIL_LINUX_DIR) missing: add the submodule first"; exit 1; }
+	@test -f $(ROOT)/out/sysroot/usr/lib/libgcc_s.a || \
+		ar rcs $(SYSROOT)/usr/lib/libgcc_s.a
+	cd $(UTIL_LINUX_DIR) && CC='$(CC)' ./configure --prefix=/usr \
+		--disable-shared --enable-static --enable-static-programs=sfdisk \
+		--without-systemdsystemunitdir --without-systemd \
+		--without-python --without-tinfo --without-ncurses --without-ncursesw \
+		--disable-bash-completion --disable-nls --without-libcrypto \
+		--without-libz --without-libcap-ng --without-readline \
+		--without-utempter \
+		--disable-all-programs --enable-fdisks=check --enable-libfdisk \
+		--enable-libblkid --enable-libuuid --enable-libsmartcols LDFLAGS='-s'
+	$(MAKE) -C $(UTIL_LINUX_DIR) sfdisk.static
+	mkdir -p $(ROOTFS)/bin
+	install -m755 $(UTIL_LINUX_DIR)/sfdisk.static $(ROOTFS)/bin/sfdisk
+
+mkfsfat: musl
+	@test -d $(DOSFSTOOLS_DIR) || { \
+		echo "$(DOSFSTOOLS_DIR) missing: add the submodule first"; exit 1; }
+	cd $(DOSFSTOOLS_DIR) && CC='$(CC)' ./configure --prefix=/usr \
+		--disable-nls LDFLAGS='-static -s'
+	$(MAKE) -C $(DOSFSTOOLS_DIR)
+	mkdir -p $(ROOTFS)/bin
+	install -m755 $(DOSFSTOOLS_DIR)/src/mkfs.fat $(ROOTFS)/bin/mkfs.fat
+	install -m755 $(DOSFSTOOLS_DIR)/src/fsck.fat $(ROOTFS)/bin/fsck.fat
+
+userland: musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat
 	$(MAKE) -C $(INIT_DIRS) CC='$(CC)'
 	$(MAKE) -C $(INIT_DIRS) install DESTDIR=$(ROOTFS) PREFIX=/
 	mv -f $(ROOTFS)/bin/sinit $(ROOTFS)/bin/init
@@ -169,6 +221,9 @@ userland: musl headers bearssl curses sdhcp e2fsprogs dropbear
 	install -m755 $(ZLIB_DIR)/minigzip $(ROOTFS)/bin/gzip
 	printf '#!/bin/sh\nexec /bin/gzip -d "$$@"\n' > $(ROOTFS)/bin/gunzip
 	chmod 755 $(ROOTFS)/bin/gunzip
+	printf '#!/bin/sh\nexec /bin/halt -p\n' > $(ROOTFS)/bin/poweroff
+	printf '#!/bin/sh\nexec /bin/halt -r\n' > $(ROOTFS)/bin/reboot
+	chmod 755 $(ROOTFS)/bin/poweroff $(ROOTFS)/bin/reboot
 
 rootfs: userland
 	mkdir -p $(ROOTFS)/bin $(ROOTFS)/sbin $(ROOTFS)/etc
@@ -182,10 +237,15 @@ rootfs: userland
 		install -m644 /etc/ssl/certs/ca-certificates.crt \
 			$(ROOTFS)/etc/ssl/cert.pem; \
 	else \
-		echo "warning: host has no CA bundle"; \
-		echo "warning: https validation will fail until you provide one"; \
+		echo "warning: no host CA bundle found"; \
 		touch $(ROOTFS)/etc/ssl/cert.pem; \
 	fi
+	mkdir -p $(ROOTFS)/lib/firmware
+	cp -r firmware/. $(ROOTFS)/lib/firmware/
+	mkdir -p $(ROOTFS)/bin $(ROOTFS)/lib/limine
+	install -m755 bin/slinux-install $(ROOTFS)/bin/slinux-install
+	install -m644 bootloader/limine/BOOTX64.EFI \
+		bootloader/limine/limine-bios.sys $(ROOTFS)/lib/limine/
 	install -m755 etc/rc.init etc/rc.shutdown $(ROOTFS)/bin/
 	ln -sf dash $(ROOTFS)/bin/sh
 	ln -sf /bin/init $(ROOTFS)/sbin/init
