@@ -3,13 +3,20 @@
 
 export PATH=/bin
 
+# stage markers go both to the console and to /dev/kmsg so that tools
+# like netconsole(8) can capture userspace boot progress remotely
+echo2() {
+	echo "$*"
+	echo "<7>slinux-init: $*" > /dev/kmsg 2>/dev/null
+}
+
 # slinux_trace on the kernel cmdline turns on shell tracing, printing
 # every command to the console as it runs
 case $(cat /proc/cmdline) in
 *slinux_trace*) set -x ;;
 esac
 
-echo "Starting slinux..."
+echo2 "Starting slinux..."
 
 mountpoint -q /proc || mount -t proc proc /proc
 mountpoint -q /sys  || mount -t sysfs sys /sys
@@ -86,7 +93,7 @@ if [ -n "$ROOT" ] && [ ! -e /.slinux-installed ]; then
 fi
 
 # system logging (syslogd(8) daemonizes)
-echo "slinux: syslog, hostname"
+echo2 "syslog, hostname"
 syslogd
 
 hostname "$(cat /etc/hostname)"
@@ -112,7 +119,7 @@ fi
 # ssh server via svc(8): -R generates host keys on first connection.
 # note: password auth requires a non-empty root password; set one with
 # passwd(1) or install a public key in /root/.ssh/authorized_keys
-echo "slinux: ssh"
+echo2 "ssh"
 if [ -x /bin/svc ] && [ -e /bin/svc.d/avail/dropbear ]; then
 	mkdir -p /etc/dropbear /root/.ssh
 	chmod 700 /root/.ssh
@@ -128,6 +135,6 @@ cat /etc/motd
 # site-specific customization hook (wifi, extra daemons, ...)
 [ -x /etc/rc.local ] && /etc/rc.local
 
-echo "slinux: console login"
+echo2 "console login"
 respawn getty /dev/ttyS0 linux &
 respawn getty /dev/tty1 linux &
