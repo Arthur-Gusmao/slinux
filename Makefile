@@ -41,7 +41,10 @@ MANDOC_DIR    := userland/mandoc
 WGET_DIR      := userland/wget
 FIRMWARE_DIR  := firmware
 LIMINE_DIR     := userland/limine
-LIMINE_TOOL    := $(ROOT)/out/host/bin/limine
+LIMINE_OUT     := $(ROOT)/out/host/limine
+LIMINE_TOOL    := $(LIMINE_OUT)/limine
+LIMINE_STAGES  := $(LIMINE_OUT)/limine-bios.sys $(LIMINE_OUT)/limine-bios-cd.bin \
+	$(LIMINE_OUT)/limine-uefi-cd.bin $(LIMINE_OUT)/BOOTX64.EFI
 ZLIB_SRCS  := adler32 compress crc32 deflate gzclose gzlib gzread gzwrite \
 	infback inffast inflate inftrees trees uncompr zutil
 
@@ -438,8 +441,8 @@ rootfs: userland
 	cp -r firmware/. $(ROOTFS)/lib/firmware/
 	mkdir -p $(ROOTFS)/bin $(ROOTFS)/lib/limine
 	install -m755 bin/slinux-install $(ROOTFS)/bin/slinux-install
-	install -m644 $(LIMINE_DIR)/bin/limine-bios.sys \
-		$(LIMINE_DIR)/common-uefi-x86-64/BOOTX64.EFI \
+	install -m644 $(LIMINE_OUT)/limine-bios.sys \
+		$(LIMINE_OUT)/BOOTX64.EFI \
 		$(ROOTFS)/lib/limine/
 ifneq ($(wildcard $(BZIMAGE)),)
 	mkdir -p $(ROOTFS)/boot
@@ -485,7 +488,8 @@ initramfs: rootfs
 		cd $(ROOTFS) && find . -print0 | LC_ALL=C sort -z | \
 		cpio --null -o -H newc --quiet --reproducible' | gzip -9n > $(INITRAMFS)
 
-$(LIMINE_TOOL):
+# always reconfigures: stale configure state silently skipped uefi builds
+$(LIMINE_STAGES):
 	@test -d $(LIMINE_DIR) || { \
 		echo "$(LIMINE_DIR) missing: add the submodule first"; exit 1; }
 	@test -x $(LIMINE_DIR)/configure || { \
@@ -493,21 +497,22 @@ $(LIMINE_TOOL):
 	cd $(LIMINE_DIR) && ./configure --enable-bios --enable-bios-cd \
 		--enable-uefi-x86-64 --enable-uefi-cd >/dev/null 2>&1
 	$(MAKE) -C $(LIMINE_DIR) -j$$(nproc) >/dev/null
-	mkdir -p $(ROOT)/out/host/bin
-	cp -f $(LIMINE_DIR)/bin/limine $@
+	mkdir -p $(LIMINE_OUT)
+	cp -f $(LIMINE_DIR)/bin/limine-bios.sys $(LIMINE_DIR)/bin/limine-bios-cd.bin \
+		$(LIMINE_DIR)/bin/limine-uefi-cd.bin $(LIMINE_DIR)/bin/limine \
+		$(LIMINE_DIR)/common-uefi-x86-64/BOOTX64.EFI $(LIMINE_OUT)/
 
 # hybrid iso: boots on bios (el torito) and uefi (embedded efi image);
 # dd-able to usb sticks as well. the live system ships slinux-install(8)
-iso: kernel $(LIMINE_TOOL) initramfs
+iso: kernel $(LIMINE_STAGES) initramfs
 	@command -v xorriso >/dev/null || { echo "xorriso missing"; exit 1; }
 	rm -rf out/iso && mkdir -p out/iso/EFI/BOOT
 	cp $(BZIMAGE) out/iso/vmlinuz
 	cp $(INITRAMFS) out/iso/initramfs.cpio.gz
-	install -m644 $(LIMINE_DIR)/bin/limine-bios.sys \
-		$(LIMINE_DIR)/bin/limine-bios-cd.bin \
-		$(LIMINE_DIR)/bin/limine-uefi-cd.bin out/iso/
-	install -m644 $(LIMINE_DIR)/common-uefi-x86-64/BOOTX64.EFI \
-		out/iso/EFI/BOOT/
+	install -m644 $(LIMINE_OUT)/limine-bios.sys \
+		$(LIMINE_OUT)/limine-bios-cd.bin \
+		$(LIMINE_OUT)/limine-uefi-cd.bin out/iso/
+	install -m644 $(LIMINE_OUT)/BOOTX64.EFI out/iso/EFI/BOOT/
 	@printf '%s\n' \
 'timeout: 5' \
 '' \
@@ -524,7 +529,7 @@ iso: kernel $(LIMINE_TOOL) initramfs
 		-isohybrid-gpt-basdat -part_like_isohybrid \
 		-appended_part_as_gpt \
 		-append_partition 2 C12A7328-F81F-11D2-BA4B-00A0C93EC93B \
-			$(LIMINE_DIR)/bin/limine-uefi-cd.bin \
+			$(LIMINE_OUT)/limine-uefi-cd.bin \
 		-V SLINUX -c boot.cat -o $(ISO) out/iso
 	$(LIMINE_TOOL) bios-install --force $(ISO)
 	@ls -la $(ISO)
