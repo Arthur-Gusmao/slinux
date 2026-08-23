@@ -1,6 +1,104 @@
+[submodule "kernel/linux"]
+	path = kernel/linux
+	url = https://github.com/torvalds/linux
+	ignore = all
+[submodule "init/sinit"]
+	path = init/sinit
+	url = git@github.com:Arthur-Gusmao/sinit.git
+	ignore = all
+[submodule "userland/9base"]
+	path = userland/9base
+	url = git@github.com:Arthur-Gusmao/9base.git
+	ignore = all
+[submodule "userland/sbase"]
+	path = userland/sbase
+	url = git@github.com:Arthur-Gusmao/sbase.git
+	ignore = all
+[submodule "userland/ubase"]
+	path = userland/ubase
+	url = git@github.com:Arthur-Gusmao/ubase.git
+	ignore = all
+[submodule "libc/musl"]
+	path = libc/musl
+	url = https://github.com/kraj/musl.git
+	ignore = all
+[submodule "shell/dash"]
+	path = shell/dash
+	url = https://git.kernel.org/pub/scm/utils/dash/dash.git
+	ignore = all
+[submodule "userland/neatvi"]
+	path = userland/neatvi
+	url = git@github.com:aligrudi/neatvi.git
+	ignore = all
+[submodule "userland/zlib"]
+	path = userland/zlib
+	url = git@github.com:madler/zlib.git
+	ignore = all
+[submodule "userland/bearssl"]
+	path = userland/bearssl
+	url = git@github.com:Arthur-Gusmao/bearssl.git
+	ignore = all
+[submodule "userland/netbsd-curses"]
+	path = userland/netbsd-curses
+	url = https://github.com/sabotage-linux/netbsd-curses.git
+	ignore = all
+[submodule "userland/sdhcp"]
+	path = userland/sdhcp
+	url = git@github.com:Arthur-Gusmao/sdhcp.git
+	ignore = all
+[submodule "userland/e2fsprogs"]
+	path = userland/e2fsprogs
+	url = https://git.kernel.org/pub/scm/fs/ext2/e2fsprogs.git
+	ignore = all
+[submodule "userland/dropbear"]
+	path = userland/dropbear
+	url = https://github.com/mkj/dropbear.git
+	ignore = all
+[submodule "userland/hostap"]
+	path = userland/hostap
+	url = https://w1.fi/hostap.git
+[submodule "userland/util-linux"]
+	path = userland/util-linux
+	url = https://github.com/util-linux/util-linux.git
+[submodule "userland/dosfstools"]
+	path = userland/dosfstools
+	url = https://github.com/dosfstools/dosfstools.git
+[submodule "userland/limine"]
+	path = userland/limine
+	url = https://github.com/limine-bootloader/limine.git
+[submodule "userland/smdev"]
+	path = userland/smdev
+	url = git@github.com:Arthur-Gusmao/smdev.git
+	ignore = all
+[submodule "userland/nldev"]
+	path = userland/nldev
+	url = git@github.com:Arthur-Gusmao/nldev.git
+	ignore = all
+[submodule "userland/svc"]
+	path = userland/svc
+	url = git@github.com:Arthur-Gusmao/svc.git
+	ignore = all
+[submodule "userland/sup"]
+	path = userland/sup
+	url = git@github.com:Arthur-Gusmao/sup.git
+	ignore = all
+[submodule "userland/curl"]
+	path = userland/curl
+	url = https://github.com/curl/curl.git
+	ignore = all
+[submodule "userland/iputils"]
+	path = userland/iputils
+	url = https://github.com/iputils/iputils
+[submodule "userland/net-tools"]
+	path = userland/net-tools
+	url = https://github.com/ecki/net-tools
+[submodule "userland/openrdate"]
+	path = userland/openrdate
+	url = https://github.com/resurrecting-open-source-projects/openrdate
 [submodule "userland/libressl"]
 	path = userland/libressl
 	url = https://github.com/libressl-portable/portable
+
 [submodule "userland/libressl-openbsd"]
 	path = userland/libressl-openbsd
 	url = https://github.com/libressl-portable/openbsd
