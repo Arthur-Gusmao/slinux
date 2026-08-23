@@ -18,9 +18,11 @@ case "$TARGET" in
 esac
 
 echo "partitioning $TARGET (gpt: esp + bios + root)"
+# esp size is fixed at 64MiB; SIZE is the total image size
+ESPSZ=64
 sfdisk "$TARGET" <<EOF
 label: gpt
-name="esp", size=64MiB, type=uefi
+name="esp", size=${ESPSZ}MiB, type=uefi
 name="bios", size=1MiB, type=21686148-6449-6E6F-744E-656564454649
 name="root", type=linux
 EOF
