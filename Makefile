@@ -428,7 +428,7 @@ userland: musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfd
 	printf '#!/bin/sh\nexec /bin/halt -r\n' > $(ROOTFS)/bin/reboot
 	chmod 755 $(ROOTFS)/bin/poweroff $(ROOTFS)/bin/reboot
 
-rootfs: userland $(LIMINE_TOOL)
+rootfs: userland
 	mkdir -p $(ROOTFS)/bin $(ROOTFS)/sbin $(ROOTFS)/etc
 	mkdir -p $(ROOTFS)/dev $(ROOTFS)/proc $(ROOTFS)/sys $(ROOTFS)/tmp
 	mkdir -p $(ROOTFS)/root $(ROOTFS)/mnt $(ROOTFS)/var/run $(ROOTFS)/var/log
@@ -513,16 +513,14 @@ $(LIMINE_STAGES):
 		$(LIMINE_DIR)/bin/limine-uefi-cd.bin \
 		$(LIMINE_DIR)/common-uefi-x86-64/BOOTX64.EFI $(LIMINE_OUT)/
 
-# hybrid iso: boots on bios (el torito) and uefi (embedded efi image);
+# uefi-only iso: boots on uefi (embedded efi image);
 # dd-able to usb sticks as well. the live system ships slinux-install(8)
 iso: kernel $(LIMINE_STAGES) initramfs
 	@command -v xorriso >/dev/null || { echo "xorriso missing"; exit 1; }
 	rm -rf out/iso && mkdir -p out/iso/EFI/BOOT
 	cp $(BZIMAGE) out/iso/vmlinuz
 	cp $(INITRAMFS) out/iso/initramfs.cpio.gz
-	install -m644 $(LIMINE_OUT)/limine-bios.sys \
-		$(LIMINE_OUT)/limine-bios-cd.bin \
-		$(LIMINE_OUT)/limine-uefi-cd.bin out/iso/
+	install -m644 $(LIMINE_OUT)/limine-uefi-cd.bin out/iso/
 	install -m644 $(LIMINE_OUT)/BOOTX64.EFI out/iso/EFI/BOOT/
 	@printf '%s\n' \
 'timeout: 5' \
@@ -534,15 +532,12 @@ iso: kernel $(LIMINE_STAGES) initramfs
 '    module_path: boot():/initramfs.cpio.gz' \
 		> out/iso/limine.conf
 	xorriso -as mkisofs -R -r -J \
-		-b limine-bios-cd.bin -no-emul-boot -boot-load-size 4 \
-		-boot-info-table \
 		-eltorito-alt-boot -e limine-uefi-cd.bin -no-emul-boot \
 		-isohybrid-gpt-basdat -part_like_isohybrid \
 		-appended_part_as_gpt \
 		-append_partition 2 C12A7328-F81F-11D2-BA4B-00A0C93EC93B \
 			$(LIMINE_OUT)/limine-uefi-cd.bin \
 		-V SLINUX -c boot.cat -o $(ISO) out/iso
-	$(LIMINE_TOOL) bios-install --force $(ISO)
 	@ls -la $(ISO)
 
 kernel:

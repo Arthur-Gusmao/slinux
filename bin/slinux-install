@@ -16,7 +16,6 @@ ESPSZ=${2:-256}
 
 [ -f /lib/limine/BOOTX64.EFI ] || {
 	echo "slinux-install: /lib/limine/BOOTX64.EFI missing" >&2; exit 1; }
-[ -x /bin/limine ] || { echo "slinux-install: /bin/limine missing" >&2; exit 1; }
 [ -f /boot/vmlinuz ] || {
 	echo "slinux-install: no kernel found at /boot/vmlinuz" >&2; exit 1; }
 
