@@ -35,7 +35,6 @@ DOSFSTOOLS_DIR  := userland/dosfstools
 SMDEV_DIR   := userland/smdev
 NLDEV_DIR   := userland/nldev
 SVC_DIR     := userland/svc
-SUP_DIR     := userland/sup
 CURL_DIR    := userland/curl
 LIBRESSL_DIR  := userland/libressl
 LIBRESSL_OPENBSD_DIR := userland/libressl-openbsd
@@ -53,7 +52,7 @@ LIMINE_STAGES  := $(LIMINE_OUT)/limine-bios.sys $(LIMINE_OUT)/limine-bios-cd.bin
 ZLIB_SRCS  := adler32 compress crc32 deflate gzclose gzlib gzread gzwrite \
 	infback inffast inflate inftrees trees uncompr zutil
 
-.PHONY: iso all musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat smdev nldev svc sup curl zlib libressl iputils nettools rdate mandoc wget userland rootfs initramfs kernel clean help
+.PHONY: iso all musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat smdev nldev svc curl zlib libressl iputils nettools rdate mandoc wget userland rootfs initramfs kernel clean help
 
 # the user may export MAKEFLAGS=-jN; top-level targets share state
 # (sysroot, rootfs), so serialize them — sub-makes still parallelize
@@ -79,7 +78,6 @@ help:
 	@echo "  make smdev       build smdev (device manager)"
 	@echo "  make nldev       build nldev/nltrigger (hotplug daemon)"
 	@echo "  make svc         install svc(8) service framework"
-	@echo "  make sup         build sup (hardcoded sudo, suid)"
 	@echo "  make curl        build curl (static, BearSSL TLS)"
 	@echo "  make zlib        build zlib (lib into sysroot)"
 	@echo "  make libressl    build libressl (libs into sysroot)"
@@ -266,14 +264,6 @@ svc:
 	install -m755 $(SVC_DIR)/bin/svc $(SVC_DIR)/bin/service $(ROOTFS)/bin/
 	install -m755 $(SVC_DIR)/svc.d/bare.sh $(ROOTFS)/bin/svc.d/
 
-sup: musl
-	@test -d $(SUP_DIR) || { \
-		echo "$(SUP_DIR) missing: add the submodule first"; exit 1; }
-	$(MAKE) -C $(SUP_DIR) CC='$(CC)' \
-		CFLAGS='-std=c99 -D_DEFAULT_SOURCE -Os -static' LDFLAGS='-static -s'
-	mkdir -p $(ROOTFS)/bin
-	install -m4755 $(SUP_DIR)/sup $(ROOTFS)/bin/sup
-
 curl: musl bearssl
 	@test -d $(CURL_DIR) || { \
 		echo "$(CURL_DIR) missing: add the submodule first"; exit 1; }
@@ -397,7 +387,7 @@ wget: musl zlib libressl
 	mkdir -p $(ROOTFS)/bin
 	install -m755 $(WGET_DIR)/src/wget $(ROOTFS)/bin/wget
 
-userland: musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat smdev nldev svc sup curl libressl iputils nettools rdate mandoc wget
+userland: musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat smdev nldev svc curl libressl iputils nettools rdate mandoc wget
 	$(MAKE) -C $(INIT_DIRS) CC='$(CC)'
 	$(MAKE) -C $(INIT_DIRS) install DESTDIR=$(ROOTFS) PREFIX=/
 	mv -f $(ROOTFS)/bin/sinit $(ROOTFS)/bin/init
@@ -449,6 +439,7 @@ rootfs: userland
 	install -m644 $(LIMINE_OUT)/limine-bios.sys \
 		$(LIMINE_OUT)/BOOTX64.EFI \
 		$(ROOTFS)/lib/limine/
+	install -m755 $(LIMINE_TOOL) $(ROOTFS)/bin/limine
 ifneq ($(wildcard $(BZIMAGE)),)
 	mkdir -p $(ROOTFS)/boot
 	install -m644 $(BZIMAGE) $(ROOTFS)/boot/vmlinuz

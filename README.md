@@ -41,7 +41,6 @@ philosophy where practical: small tools, simple code, sane defaults.
 | smdev | fork | device manager: `smdev -s` coldplug; slinux rules baked into the fork |
 | nldev | mirror | netlink hotplug daemon feeding uevents to smdev |
 | svc | mirror | service framework (`svc -s/-k/-r/-a/-d/-l`, `service start/stop/restart`) |
-| sup | fork | hardcoded sudo; suid, rules + getpath fix baked into the fork |
 | curl 8.14.1 | upstream | static https client over BearSSL (last release with the bearssl backend) |
 | limine 12.6 | upstream | bootloader (submodule); bios+uefi stages built from source |
 
@@ -157,14 +156,6 @@ a service is either an executable script in `avail/` or an empty file
 (run the like-named binary with the params from `default/<name>`).
 site-specific boot customisation belongs in `/etc/rc.local`
 (create it; rc.init runs it last if executable).
-
-### privilege escalation with sup
-
-sup(8) is a setuid binary whose authorisation table is compiled in
-(the fork's `config.def.h`). rebuild with `make sup` after editing
-rules;
-each rule pins a uid, command name and exact binary path, optionally a
-sha256. run `sup -l` to list what is allowed.
 
 ### bios-only machines
 

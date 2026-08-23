@@ -78,10 +78,6 @@
 	path = userland/svc
 	url = git@github.com:Arthur-Gusmao/svc.git
 	ignore = all
-[submodule "userland/sup"]
-	path = userland/sup
-	url = git@github.com:Arthur-Gusmao/sup.git
-	ignore = all
 [submodule "userland/curl"]
 	path = userland/curl
 	url = https://github.com/curl/curl.git
