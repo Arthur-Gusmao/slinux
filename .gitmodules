@@ -98,3 +98,6 @@
 [submodule "userland/libressl-openbsd"]
 	path = userland/libressl-openbsd
 	url = https://github.com/libressl-portable/openbsd
+[submodule "userland/opendoas"]
+	path = userland/opendoas
+	url = https://github.com/Duncaen/OpenDoas.git

@@ -110,8 +110,8 @@ sorted and packed under fakeroot so all files are uid 0/gid 0.
    the iso is hybrid: dd to a usb stick or burn to cd, both work.
 
 2. **boot the machine from the stick** via the firmware boot menu
-   (f12/f11/esc/del depending on vendor). pick the **uefi** entry -
-   the on-target installer requires uefi.
+   (f12/f11/esc/del depending on vendor). prefer the **uefi** entry -
+   it is the path we can actually test.
 
 3. **log in as root** (empty password) and install:
 
@@ -121,8 +121,10 @@ sorted and packed under fakeroot so all files are uid 0/gid 0.
    ```
 
    confirm with `y`. the installer partitions the disk (gpt: 256mib esp +
-   ext4 root), formats both, copies the whole system over, installs the
-   limine bootloader and writes `limine.conf` with `root=PARTUUID=`.
+   1mib bios boot + ext4 root), formats them, copies the whole system
+   over, installs limine for both uefi and bios, writes `limine.conf`
+   with `root=PARTUUID=` and asks for the root password plus a regular
+   user (member of `wheel`; use `doas` to run commands as root).
 
 4. **reboot without the stick** - the system boots from disk.
 
@@ -130,7 +132,7 @@ sorted and packed under fakeroot so all files are uid 0/gid 0.
 
 | what | how |
 |---|---|
-| root password | `passwd` (it ships empty; ssh refuses empty passwords) |
+| become root | `doas sh` (your user password; you were added to `wheel` at install time) |
 | ssh access | dropbear already listens on :22; put keys in `/root/.ssh/authorized_keys` |
 | wired network | automatic (`sdhcp` at boot) |
 | wifi | create `/etc/wpa_supplicant.conf` and reboot; rc.init associates and dhcp's every wlan interface found |
@@ -159,8 +161,14 @@ site-specific boot customisation belongs in `/etc/rc.local`
 
 ### bios-only machines
 
-the on-target installer is uefi-only. for machines without uefi, install
-from another linux box with this repository checked out:
+the on-target installer prefers uefi but works from a bios boot too: it
+writes a gpt with an esp and a 1mib bios boot partition, copies
+`limine-bios.sys` to the esp and runs `limine bios-install` to embed the
+bios stages. caveat: bios booting from disk is currently untestable in
+qemu/seabios (limine 12.6 hangs there even with stock binaries; the iso
+and uefi paths are unaffected), so on real hardware verify before
+wiping anything you care about. alternatively, install from another
+linux box with this repository checked out:
 
 ```
 ./install.sh /dev/sdX           # writes gpt + limine bios stages directly
@@ -208,7 +216,8 @@ first (see `etc/rc.init`).
   partitioning (edit `bin/slinux-install` if you need it).
 - wpa3/sae unsupported (internal crypto lacks bignum math); wpa2-psk and
   common eap networks work.
-- uefi required for the on-target installer path (see above for bios).
+- on-target installer prefers uefi; bios-from-disk is untested in
+  emulators (see above) and unverified on real hardware.
 
 ## license
 

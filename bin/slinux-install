@@ -2,10 +2,11 @@
 # slinux-install(8) - install slinux onto a disk from the running system.
 # usage: slinux-install <disk> [esp-size-mib]
 #
-# the kernel normally comes from /boot/vmlinuz (embedded in the live
-# initramfs); the rescue initramfs is searched on the boot medium (cd,
-# usb stick) if one can be found, otherwise the rescue menu entry is
-# omitted. installs are uefi-only; for bios use install.sh from a host.
+# writes a gpt with an esp, a 1mib bios boot partition and an ext4 root,
+# installs limine for both uefi and bios, and asks for the root password
+# plus a regular user (member of wheel, uses doas). the kernel normally
+# comes from /boot/vmlinuz; the rescue initramfs is searched on the boot
+# medium if one can be found, otherwise the rescue entry is omitted.
 
 set -eu
 
@@ -13,9 +14,11 @@ set -eu
 DISK=$1
 ESPSZ=${2:-256}
 
-[ -b "$DISK" ] || { echo "slinux-install: not a block device: $DISK" >&2; exit 1; }
 [ -f /lib/limine/BOOTX64.EFI ] || {
 	echo "slinux-install: /lib/limine/BOOTX64.EFI missing" >&2; exit 1; }
+[ -f /lib/limine/limine-bios.sys ] || {
+	echo "slinux-install: /lib/limine/limine-bios.sys missing" >&2; exit 1; }
+[ -x /bin/limine ] || { echo "slinux-install: /bin/limine missing" >&2; exit 1; }
 [ -f /boot/vmlinuz ] || {
 	echo "slinux-install: no kernel found at /boot/vmlinuz" >&2; exit 1; }
 
@@ -29,6 +32,17 @@ esac
 
 P=$DISK
 case $DISK in *nvme* | *mmcblk*) P=$DISK'p' ;; esac
+
+# the disk node may lag behind sysfs on slow coldplugs; give it time
+i=0
+until [ -b "$DISK" ]; do
+	i=$((i + 1))
+	[ "$i" -gt 30 ] && {
+		echo "slinux-install: device node $DISK never appeared" >&2
+		exit 1
+	}
+	sleep 1
+done
 
 # search the boot medium (cd-rom, usb stick, ...) for a rescue initramfs;
 # any newer vmlinuz found there wins over the embedded copy
@@ -54,10 +68,25 @@ done
 [ -n "$INITRD" ] || echo "note: boot medium not found, installing without rescue entry"
 trap 'umount /tmp/bm 2>/dev/null' EXIT INT TERM
 
-echo "partitioning $DISK (gpt: esp + root)"
+# passwords are read with getpass(1): prompt on stderr, line on stdout,
+# echo disabled when stdin is a tty (plain read otherwise)
+readpass() {
+	while :; do
+		PW=$(getpass "$1 password (min 8 chars):") || exit 1
+		case ${#PW} in
+		[89] | 1?) break ;;
+		esac
+		echo "password too short"
+	done
+	PW2=$(getpass "repeat password:") || exit 1
+	[ "$PW" = "$PW2" ] || { echo "passwords differ"; exit 1; }
+}
+
+echo "partitioning $DISK (gpt: esp + bios boot + root)"
 sfdisk "$DISK" <<EOF
 label: gpt
 name="esp", size=${ESPSZ}MiB, type=uefi
+name="bios", size=1MiB, type=21686148-6449-6E6F-744E-656564454649
 name="root", type=linux
 EOF
 
@@ -65,16 +94,16 @@ echo "creating filesystems"
 # devtmpfs recreates partition nodes asynchronously after sfdisk's
 # re-read ioctl; wait for them before touching the filesystems
 i=0
-until [ -b "$P"1 ] && [ -b "$P"2 ]; do
+until [ -b "$P"1 ] && [ -b "$P"2 ] && [ -b "$P"3 ]; do
 	i=$((i + 1))
 	[ "$i" -gt 15 ] && { echo "slinux-install: partitions never appeared" >&2; exit 1; }
 	sleep 1
 done
 mkfs.fat -F32 -n SLINUX "$P"1 >/dev/null
-mke2fs -F -q -t ext4 -L slinux "$P"2
+mke2fs -F -q -t ext4 -L slinux "$P"3
 
 mkdir -p /mnt/root
-mount -t ext4 "$P"2 /mnt/root
+mount -t ext4 "$P"3 /mnt/root
 trap 'umount /mnt/root/boot/efi /mnt/root /tmp/bm 2>/dev/null' EXIT INT TERM
 # the esp mountpoint must live inside the freshly mounted rootfs
 mkdir -p /mnt/root/boot/efi
@@ -88,19 +117,22 @@ for d in bin etc lib sbin usr var share root; do
 done
 # shellcheck disable=SC2086
 tar cf - $SRCDIRS | tar xf - -C /mnt/root
+# tar should preserve setuid but doesn't always; re-apply for safety
+chmod u+s /mnt/root/bin/doas 2>/dev/null
 mkdir -p /mnt/root/tmp /mnt/root/mnt /mnt/root/dev /mnt/root/proc /mnt/root/sys
 chmod 1777 /mnt/root/tmp
 touch /mnt/root/.slinux-installed
 
 echo "installing bootloader"
 ESP=/mnt/root/boot/efi
-mkdir -p $ESP/EFI/BOOT
+mkdir -p $ESP/EFI/BOOT $ESP/boot/limine
 cp $KERNEL $ESP/vmlinuz
 cp /lib/limine/BOOTX64.EFI $ESP/EFI/BOOT/
-cp /lib/limine/limine-bios.sys /mnt/root/boot/
+cp /lib/limine/limine-bios.sys $ESP/boot/limine/
+limine bios-install "$DISK"
 
-PU=$(sfdisk -d "$DISK" 2>/dev/null | grep "^$P"2 | sed -n 's/.*uuid=\([^,]*\).*/\1/p')
-[ -n "$PU" ] || { echo "slinux-install: cannot read PARTUUID of $P"2 >&2; exit 1; }
+PU=$(sfdisk -d "$DISK" 2>/dev/null | grep "^$P"3 | sed -n 's/.*uuid=\([^,]*\).*/\1/p')
+[ -n "$PU" ] || { echo "slinux-install: cannot read PARTUUID of $P"3 >&2; exit 1; }
 
 {
 	printf 'timeout: 3\n\n'
@@ -113,6 +145,56 @@ PU=$(sfdisk -d "$DISK" 2>/dev/null | grep "^$P"2 | sed -n 's/.*uuid=\([^,]*\).*/
 		printf '    module_path: boot():/initramfs.cpio.gz\n'
 	fi
 } >$ESP/EFI/BOOT/limine.conf
+
+echo "creating users"
+readpass root
+RHASH=$(cryptpw "$PW")
+while :; do
+	printf 'new username: '
+	IFS= read -r USER || exit 1
+	case $USER in
+	[a-z_][a-z0-9_-]*) break ;;
+	*) echo "invalid username" ;;
+	esac
+done
+readpass "$USER"
+UHASH=$(cryptpw "$PW")
+
+ROOTMNT=/mnt/root
+# sbase sed(1) has no -i; rewrite files with grep/cut/mv instead
+
+# flip root's empty password field to x (hash lives in shadow)
+> "$ROOTMNT/etc/passwd.new"
+printf 'root:x:0:0:root:/root:/bin/sh\n' >>"$ROOTMNT/etc/passwd.new"
+printf '%s:x:1000:100::/home/%s:/bin/sh\n' "$USER" "$USER" \
+	>>"$ROOTMNT/etc/passwd.new"
+mv "$ROOTMNT/etc/passwd.new" "$ROOTMNT/etc/passwd"
+
+# use fixed last_change (days since epoch) for shadow fields
+LASTCHANGE=20688
+printf 'root:%s:%d:0:99999:7:::\n' "$RHASH" "$LASTCHANGE" >"$ROOTMNT/etc/shadow"
+printf '%s:%s:%d:0:99999:7:::\n' "$USER" "$UHASH" "$LASTCHANGE" \
+	>>"$ROOTMNT/etc/shadow"
+chmod 600 "$ROOTMNT/etc/shadow"
+
+# add the new user to wheel(10) and users(100)
+OLDIFS=$IFS
+IFS=:
+: >"$ROOTMNT/etc/group.new"
+while read -r NAME PASS GID REST; do
+	case $GID in
+	10 | 100) MEM=$USER ;;
+	*) MEM="" ;;
+	esac
+	[ -n "$REST" ] && REST=":$REST"
+	printf '%s:%s:%s:%s%s\n' "$NAME" "$PASS" "$GID" "$MEM" "$REST" \
+		>>"$ROOTMNT/etc/group.new"
+done <"$ROOTMNT/etc/group"
+IFS=$OLDIFS
+mv "$ROOTMNT/etc/group.new" "$ROOTMNT/etc/group"
+
+mkdir -p "$ROOTMNT/home/$USER"
+chown 1000:100 "$ROOTMNT/home/$USER"
 
 sync
 umount $ESP /mnt/root

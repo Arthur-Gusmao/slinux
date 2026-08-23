@@ -1,4 +1,5 @@
 root::0:
+wheel::10:
 tty::5:
 disk::6:
 lp::7:
@@ -7,3 +8,4 @@ kmem::15:
 audio::29:
 video::44:
 input::97:
+users::100:

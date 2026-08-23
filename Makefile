@@ -35,6 +35,7 @@ DOSFSTOOLS_DIR  := userland/dosfstools
 SMDEV_DIR   := userland/smdev
 NLDEV_DIR   := userland/nldev
 SVC_DIR     := userland/svc
+DOAS_DIR    := userland/opendoas
 CURL_DIR    := userland/curl
 LIBRESSL_DIR  := userland/libressl
 LIBRESSL_OPENBSD_DIR := userland/libressl-openbsd
@@ -52,7 +53,7 @@ LIMINE_STAGES  := $(LIMINE_OUT)/limine-bios.sys $(LIMINE_OUT)/limine-bios-cd.bin
 ZLIB_SRCS  := adler32 compress crc32 deflate gzclose gzlib gzread gzwrite \
 	infback inffast inflate inftrees trees uncompr zutil
 
-.PHONY: iso all musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat smdev nldev svc curl zlib libressl iputils nettools rdate mandoc wget userland rootfs initramfs kernel clean help
+.PHONY: iso all musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat smdev nldev svc doas curl zlib libressl iputils nettools rdate mandoc wget userland rootfs initramfs kernel clean help
 
 # the user may export MAKEFLAGS=-jN; top-level targets share state
 # (sysroot, rootfs), so serialize them — sub-makes still parallelize
@@ -78,6 +79,7 @@ help:
 	@echo "  make smdev       build smdev (device manager)"
 	@echo "  make nldev       build nldev/nltrigger (hotplug daemon)"
 	@echo "  make svc         install svc(8) service framework"
+	@echo "  make doas        build doas (static, setuid, shadow auth)"
 	@echo "  make curl        build curl (static, BearSSL TLS)"
 	@echo "  make zlib        build zlib (lib into sysroot)"
 	@echo "  make libressl    build libressl (libs into sysroot)"
@@ -264,6 +266,16 @@ svc:
 	install -m755 $(SVC_DIR)/bin/svc $(SVC_DIR)/bin/service $(ROOTFS)/bin/
 	install -m755 $(SVC_DIR)/svc.d/bare.sh $(ROOTFS)/bin/svc.d/
 
+doas: musl
+	@test -d $(DOAS_DIR) || { \
+		echo "$(DOAS_DIR) missing: add the submodule first"; exit 1; }
+	cd $(DOAS_DIR) && ./configure --prefix=/usr --without-pam >/dev/null
+	$(MAKE) -C $(DOAS_DIR) CC='$(CC)' CFLAGS='-Os' \
+		LDFLAGS='-static -s'
+	mkdir -p $(ROOTFS)/bin $(ROOTFS)/etc
+	install -m4755 $(DOAS_DIR)/doas $(ROOTFS)/bin/doas
+	install -m600 etc/doas.conf $(ROOTFS)/etc/doas.conf
+
 curl: musl bearssl
 	@test -d $(CURL_DIR) || { \
 		echo "$(CURL_DIR) missing: add the submodule first"; exit 1; }
@@ -387,7 +399,7 @@ wget: musl zlib libressl
 	mkdir -p $(ROOTFS)/bin
 	install -m755 $(WGET_DIR)/src/wget $(ROOTFS)/bin/wget
 
-userland: musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat smdev nldev svc curl libressl iputils nettools rdate mandoc wget
+userland: musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat smdev nldev svc doas curl libressl iputils nettools rdate mandoc wget
 	$(MAKE) -C $(INIT_DIRS) CC='$(CC)'
 	$(MAKE) -C $(INIT_DIRS) install DESTDIR=$(ROOTFS) PREFIX=/
 	mv -f $(ROOTFS)/bin/sinit $(ROOTFS)/bin/init
@@ -416,7 +428,7 @@ userland: musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfd
 	printf '#!/bin/sh\nexec /bin/halt -r\n' > $(ROOTFS)/bin/reboot
 	chmod 755 $(ROOTFS)/bin/poweroff $(ROOTFS)/bin/reboot
 
-rootfs: userland
+rootfs: userland $(LIMINE_TOOL)
 	mkdir -p $(ROOTFS)/bin $(ROOTFS)/sbin $(ROOTFS)/etc
 	mkdir -p $(ROOTFS)/dev $(ROOTFS)/proc $(ROOTFS)/sys $(ROOTFS)/tmp
 	mkdir -p $(ROOTFS)/root $(ROOTFS)/mnt $(ROOTFS)/var/run $(ROOTFS)/var/log
@@ -436,10 +448,15 @@ rootfs: userland
 	cp -r firmware/. $(ROOTFS)/lib/firmware/
 	mkdir -p $(ROOTFS)/bin $(ROOTFS)/lib/limine
 	install -m755 bin/slinux-install $(ROOTFS)/bin/slinux-install
+	$(CC) -static -Os -s -o $(ROOTFS)/bin/cryptpw tools/cryptpw.c
+	$(CC) -static -Os -s -o $(ROOTFS)/bin/getpass tools/getpass.c
+	# static rebuild of the limine host tool: the one produced by the
+	# limine build is dynamically linked and the rootfs ships no libc.so
+	$(CC) -static -Os -s -I $(LIMINE_DIR)/bin \
+		-o $(ROOTFS)/bin/limine $(LIMINE_DIR)/host/limine.c
 	install -m644 $(LIMINE_OUT)/limine-bios.sys \
 		$(LIMINE_OUT)/BOOTX64.EFI \
 		$(ROOTFS)/lib/limine/
-	install -m755 $(LIMINE_TOOL) $(ROOTFS)/bin/limine
 ifneq ($(wildcard $(BZIMAGE)),)
 	mkdir -p $(ROOTFS)/boot
 	install -m644 $(BZIMAGE) $(ROOTFS)/boot/vmlinuz
