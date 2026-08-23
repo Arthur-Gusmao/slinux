@@ -492,10 +492,14 @@ initramfs: rootfs
 $(LIMINE_STAGES):
 	@test -d $(LIMINE_DIR) || { \
 		echo "$(LIMINE_DIR) missing: add the submodule first"; exit 1; }
+	@command -v nasm >/dev/null || { \
+		echo "host dep missing: nasm (limine bios stage)"; exit 1; }
+	@command -v mformat >/dev/null || { \
+		echo "host dep missing: mtools (limine uefi-cd image)"; exit 1; }
 	@test -x $(LIMINE_DIR)/configure || { \
 		cd $(LIMINE_DIR) && ./bootstrap >/dev/null 2>&1; }
 	cd $(LIMINE_DIR) && ./configure --enable-bios --enable-bios-cd \
-		--enable-uefi-x86-64 --enable-uefi-cd >/dev/null 2>&1
+		--enable-uefi-x86-64 --enable-uefi-cd
 	$(MAKE) -C $(LIMINE_DIR) -j$$(nproc) >/dev/null
 	mkdir -p $(LIMINE_OUT)
 	cp -f $(LIMINE_DIR)/bin/limine-bios.sys $(LIMINE_DIR)/bin/limine-bios-cd.bin \
