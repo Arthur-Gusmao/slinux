@@ -9,6 +9,11 @@ ISO       := $(ROOT)/slinux.iso
 
 CC := clang --target=x86_64-linux-musl --sysroot=$(SYSROOT)
 
+# gnu make >= 4.4 leaks makefile vars into recipe processes; without
+# this, limine's configure picks up the cross CC while out/sysroot
+# doesn't exist yet and dies with "C compiler cannot create executables"
+unexport CC
+
 # reproducible builds: fix timestamps for the kernel and anything that
 # honors SOURCE_DATE_EPOCH (https://reproducible-builds.org/docs/source-date-epoch/)
 SOURCE_DATE_EPOCH := $(shell git log -1 --format=%ct 2>/dev/null || echo 1704067200)
