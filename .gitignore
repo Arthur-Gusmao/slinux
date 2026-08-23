@@ -21,7 +21,6 @@ userland/wget/config.status
 userland/wget/Makefile
 userland/wget/*/Makefile
 userland/wget/po/POTFILES
-userland/wget/po/*.gmo
 userland/wget/po/stamp-po
 userland/wget/.deps/
 userland/wget/*/.deps/
