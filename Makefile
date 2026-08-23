@@ -206,7 +206,8 @@ wpasupplicant: musl
 sfdisk: musl
 	@test -d $(UTIL_LINUX_DIR) || { \
 		echo "$(UTIL_LINUX_DIR) missing: add the submodule first"; exit 1; }
-	cd $(UTIL_LINUX_DIR) && PATH=/usr/bin:/bin autoreconf -fi >/dev/null 2>&1
+	cd $(UTIL_LINUX_DIR) && test -x configure || \
+		PATH=/usr/bin:/bin autoreconf -fi
 	cd $(UTIL_LINUX_DIR) && CC='$(CC)' ./configure --prefix=/usr \
 		--disable-shared --enable-static --enable-static-programs=sfdisk \
 		--without-systemdsystemunitdir --without-systemd \
@@ -223,7 +224,8 @@ sfdisk: musl
 mkfsfat: musl
 	@test -d $(DOSFSTOOLS_DIR) || { \
 		echo "$(DOSFSTOOLS_DIR) missing: add the submodule first"; exit 1; }
-	cd $(DOSFSTOOLS_DIR) && PATH=/usr/bin:/bin autoreconf -fi >/dev/null 2>&1
+	cd $(DOSFSTOOLS_DIR) && test -x configure || \
+		PATH=/usr/bin:/bin autoreconf -fi
 	cd $(DOSFSTOOLS_DIR) && CC='$(CC)' ./configure --prefix=/usr \
 		--disable-nls LDFLAGS='-static -s'
 	$(MAKE) -C $(DOSFSTOOLS_DIR)
@@ -267,7 +269,8 @@ sup: musl
 curl: musl bearssl
 	@test -d $(CURL_DIR) || { \
 		echo "$(CURL_DIR) missing: add the submodule first"; exit 1; }
-	cd $(CURL_DIR) && PATH=/usr/bin:/bin autoreconf -fi >/dev/null 2>&1
+	cd $(CURL_DIR) && test -x configure || \
+		PATH=/usr/bin:/bin autoreconf -fi
 	cd $(CURL_DIR) && PATH=/usr/bin:/bin ./configure --host=x86_64-linux-musl \
 		--prefix=/usr --disable-shared --enable-static \
 		--with-bearssl=$(SYSROOT) --without-openssl --without-zlib \
@@ -287,10 +290,15 @@ libressl: musl
 		exit 1; }
 	@[ -e $(LIBRESSL_DIR)/openbsd ] || \
 		ln -sfn ../$(notdir $(LIBRESSL_OPENBSD_DIR)) $(LIBRESSL_DIR)/openbsd
-	git -C $(LIBRESSL_OPENBSD_DIR) checkout -q libressl-v4.3.2
+	git -C $(LIBRESSL_OPENBSD_DIR) fetch -q origin \
+		'refs/tags/libressl-v4.3.2:refs/tags/libressl-v4.3.2' \
+		2>/dev/null || true
+	git -C $(LIBRESSL_OPENBSD_DIR) checkout -q libressl-v4.3.2 \
+		2>/dev/null || true
 	git -C $(LIBRESSL_DIR) fetch -q --depth 1 origin \
 		refs/tags/v4.3.2:refs/tags/v4.3.2 2>/dev/null || true
-	cd $(LIBRESSL_DIR) && sh autogen.sh >/dev/null 2>&1
+	cd $(LIBRESSL_DIR) && sh autogen.sh >/dev/null 2>&1 || \
+		sh autogen.sh >/dev/null 2>&1
 	cd $(LIBRESSL_DIR) && CC='$(CC)' CFLAGS='-Os' ./configure \
 		--prefix=/usr --disable-shared --disable-tests
 	$(MAKE) -C $(LIBRESSL_DIR)/crypto -j$$(nproc)
@@ -376,7 +384,8 @@ wget: musl zlib libressl
 		--sysconfdir=/etc \
 		--with-ssl=openssl --disable-nls --without-libpsl --disable-iri \
 		--disable-pcre2 --disable-pcre LDFLAGS='-static -s'
-	$(MAKE) -C $(WGET_DIR) -j$$(nproc)
+	$(MAKE) -C $(WGET_DIR) ACLOCAL=: AUTOCONF=: AUTOHEADER=: \
+		AUTOMAKE=: MAKEINFO=:
 	mkdir -p $(ROOTFS)/bin
 	install -m755 $(WGET_DIR)/src/wget $(ROOTFS)/bin/wget
 
@@ -390,7 +399,8 @@ userland: musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfd
 	done
 	$(MAKE) -C userland/9base CC='$(CC)' PREFIX=/usr/plan9
 	$(MAKE) -C userland/9base install DESTDIR=$(ROOTFS) PREFIX=/usr/plan9
-	cd $(SHELL_DIR) && PATH=/usr/bin:/bin autoreconf -fi >/dev/null 2>&1
+	cd $(SHELL_DIR) && test -x configure || \
+		PATH=/usr/bin:/bin autoreconf -fi
 	cd $(SHELL_DIR) && CC='$(CC)' LDFLAGS='-s -static' ./configure \
 		--prefix=/ --sysconfdir=/etc \
 		--build=x86_64-alpine-linux-musl --host=x86_64-linux-musl
@@ -468,7 +478,6 @@ endif
 		> $(ROOTFS)/etc/profile
 
 initramfs: rootfs
-	@command -v cpio >/dev/null || { echo "GNU cpio missing (busybox cpio silently produces a broken archive)"; exit 1; }
 	@cpio --version 2>/dev/null | grep -q 'GNU cpio' || { echo "GNU cpio missing (busybox cpio silently produces a broken archive)"; exit 1; }
 	find $(ROOTFS) -print0 | xargs -0 touch -h -d @$(SOURCE_DATE_EPOCH)
 	fakeroot -- sh -c 'chown -R 0:0 $(ROOTFS) && \
@@ -487,7 +496,7 @@ $(LIMINE_TOOL):
 
 # hybrid iso: boots on bios (el torito) and uefi (embedded efi image);
 # dd-able to usb sticks as well. the live system ships slinux-install(8)
-iso: initramfs $(LIMINE_TOOL)
+iso: kernel initramfs $(LIMINE_TOOL)
 	@command -v xorriso >/dev/null || { echo "xorriso missing"; exit 1; }
 	rm -rf out/iso && mkdir -p out/iso/EFI/BOOT
 	cp $(BZIMAGE) out/iso/vmlinuz
