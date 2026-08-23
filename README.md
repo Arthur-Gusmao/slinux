@@ -107,11 +107,10 @@ sorted and packed under fakeroot so all files are uid 0/gid 0.
    doas dd if=slinux.iso of=/dev/sdX bs=4M status=progress && sync
    ```
 
-   the iso is hybrid: dd to a usb stick or burn to cd, both work.
+   the iso boots on uefi; dd to a usb stick.
 
 2. **boot the machine from the stick** via the firmware boot menu
-   (f12/f11/esc/del depending on vendor). prefer the **uefi** entry -
-   it is the path we can actually test.
+   (f12/f11/esc/del depending on vendor). pick the **uefi** entry.
 
 3. **log in as root** (empty password) and install:
 
@@ -120,11 +119,11 @@ sorted and packed under fakeroot so all files are uid 0/gid 0.
    slinux-install /dev/sda       # double-check the name!
    ```
 
-   confirm with `y`. the installer partitions the disk (gpt: 256mib esp +
-   1mib bios boot + ext4 root), formats them, copies the whole system
-   over, installs limine for both uefi and bios, writes `limine.conf`
-   with `root=PARTUUID=` and asks for the root password plus a regular
-   user (member of `wheel`; use `doas` to run commands as root).
+   confirm with `y`. the installer partitions the disk (gpt: 64mib esp +
+   ext4 root), formats them, copies the whole system over, installs limine
+   for uefi, writes `limine.conf` with `root=PARTUUID=` and asks for the
+   root password plus a regular user (member of `wheel`; use `doas` to run
+   commands as root).
 
 4. **reboot without the stick** - the system boots from disk.
 
@@ -158,21 +157,6 @@ a service is either an executable script in `avail/` or an empty file
 (run the like-named binary with the params from `default/<name>`).
 site-specific boot customisation belongs in `/etc/rc.local`
 (create it; rc.init runs it last if executable).
-
-### bios-only machines
-
-the on-target installer prefers uefi but works from a bios boot too: it
-writes a gpt with an esp and a 1mib bios boot partition, copies
-`limine-bios.sys` to the esp and runs `limine bios-install` to embed the
-bios stages. caveat: bios booting from disk is currently untestable in
-qemu/seabios (limine 12.6 hangs there even with stock binaries; the iso
-and uefi paths are unaffected), so on real hardware verify before
-wiping anything you care about. alternatively, install from another
-linux box with this repository checked out:
-
-```
-./install.sh /dev/sdX           # writes gpt + limine bios stages directly
-```
 
 ## repository layout
 
@@ -216,8 +200,7 @@ first (see `etc/rc.init`).
   partitioning (edit `bin/slinux-install` if you need it).
 - wpa3/sae unsupported (internal crypto lacks bignum math); wpa2-psk and
   common eap networks work.
-- on-target installer prefers uefi; bios-from-disk is untested in
-  emulators (see above) and unverified on real hardware.
+- uefi required (no legacy bios support).
 
 ## license
 

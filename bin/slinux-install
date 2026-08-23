@@ -2,11 +2,11 @@
 # slinux-install(8) - install slinux onto a disk from the running system.
 # usage: slinux-install <disk> [esp-size-mib]
 #
-# writes a gpt with an esp, a 1mib bios boot partition and an ext4 root,
-# installs limine for both uefi and bios, and asks for the root password
-# plus a regular user (member of wheel, uses doas). the kernel normally
-# comes from /boot/vmlinuz; the rescue initramfs is searched on the boot
-# medium if one can be found, otherwise the rescue entry is omitted.
+# writes a gpt with an esp and an ext4 root, installs limine for uefi,
+# and asks for the root password plus a regular user (member of wheel,
+# uses doas). the kernel normally comes from /boot/vmlinuz; the rescue
+# initramfs is searched on the boot medium if one can be found,
+# otherwise the rescue entry is omitted.
 
 set -eu
 
@@ -16,8 +16,6 @@ ESPSZ=${2:-256}
 
 [ -f /lib/limine/BOOTX64.EFI ] || {
 	echo "slinux-install: /lib/limine/BOOTX64.EFI missing" >&2; exit 1; }
-[ -f /lib/limine/limine-bios.sys ] || {
-	echo "slinux-install: /lib/limine/limine-bios.sys missing" >&2; exit 1; }
 [ -x /bin/limine ] || { echo "slinux-install: /bin/limine missing" >&2; exit 1; }
 [ -f /boot/vmlinuz ] || {
 	echo "slinux-install: no kernel found at /boot/vmlinuz" >&2; exit 1; }
@@ -82,11 +80,10 @@ readpass() {
 	[ "$PW" = "$PW2" ] || { echo "passwords differ"; exit 1; }
 }
 
-echo "partitioning $DISK (gpt: esp + bios boot + root)"
+echo "partitioning $DISK (gpt: esp + root)"
 sfdisk "$DISK" <<EOF
 label: gpt
 name="esp", size=${ESPSZ}MiB, type=uefi
-name="bios", size=1MiB, type=21686148-6449-6E6F-744E-656564454649
 name="root", type=linux
 EOF
 
@@ -94,16 +91,16 @@ echo "creating filesystems"
 # devtmpfs recreates partition nodes asynchronously after sfdisk's
 # re-read ioctl; wait for them before touching the filesystems
 i=0
-until [ -b "$P"1 ] && [ -b "$P"2 ] && [ -b "$P"3 ]; do
+until [ -b "$P"1 ] && [ -b "$P"2 ]; do
 	i=$((i + 1))
 	[ "$i" -gt 15 ] && { echo "slinux-install: partitions never appeared" >&2; exit 1; }
 	sleep 1
 done
 mkfs.fat -F32 -n SLINUX "$P"1 >/dev/null
-mke2fs -F -q -t ext4 -L slinux "$P"3
+mke2fs -F -q -t ext4 -L slinux "$P"2
 
 mkdir -p /mnt/root
-mount -t ext4 "$P"3 /mnt/root
+mount -t ext4 "$P"2 /mnt/root
 trap 'umount /mnt/root/boot/efi /mnt/root /tmp/bm 2>/dev/null' EXIT INT TERM
 # the esp mountpoint must live inside the freshly mounted rootfs
 mkdir -p /mnt/root/boot/efi
@@ -125,14 +122,12 @@ touch /mnt/root/.slinux-installed
 
 echo "installing bootloader"
 ESP=/mnt/root/boot/efi
-mkdir -p $ESP/EFI/BOOT $ESP/boot/limine
+mkdir -p $ESP/EFI/BOOT
 cp $KERNEL $ESP/vmlinuz
 cp /lib/limine/BOOTX64.EFI $ESP/EFI/BOOT/
-cp /lib/limine/limine-bios.sys $ESP/boot/limine/
-limine bios-install "$DISK"
 
-PU=$(sfdisk -d "$DISK" 2>/dev/null | grep "^$P"3 | sed -n 's/.*uuid=\([^,]*\).*/\1/p')
-[ -n "$PU" ] || { echo "slinux-install: cannot read PARTUUID of $P"3 >&2; exit 1; }
+PU=$(sfdisk -d "$DISK" 2>/dev/null | grep "^$P"2 | sed -n 's/.*uuid=\([^,]*\).*/\1/p')
+[ -n "$PU" ] || { echo "slinux-install: cannot read PARTUUID of $P"2 >&2; exit 1; }
 
 {
 	printf 'timeout: 3\n\n'

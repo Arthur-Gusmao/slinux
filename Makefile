@@ -48,7 +48,7 @@ FIRMWARE_DIR  := firmware
 LIMINE_DIR     := userland/limine
 LIMINE_OUT     := $(ROOT)/out/host/limine
 LIMINE_TOOL    := $(LIMINE_OUT)/limine
-LIMINE_STAGES  := $(LIMINE_OUT)/limine-bios.sys $(LIMINE_OUT)/limine-bios-cd.bin \
+LIMINE_STAGES  := $(LIMINE_OUT)/limine-bios-cd.bin \
 	$(LIMINE_OUT)/limine-uefi-cd.bin $(LIMINE_OUT)/BOOTX64.EFI
 ZLIB_SRCS  := adler32 compress crc32 deflate gzclose gzlib gzread gzwrite \
 	infback inffast inflate inftrees trees uncompr zutil
@@ -450,13 +450,7 @@ rootfs: userland $(LIMINE_TOOL)
 	install -m755 bin/slinux-install $(ROOTFS)/bin/slinux-install
 	$(CC) -static -Os -s -o $(ROOTFS)/bin/cryptpw tools/cryptpw.c
 	$(CC) -static -Os -s -o $(ROOTFS)/bin/getpass tools/getpass.c
-	# static rebuild of the limine host tool: the one produced by the
-	# limine build is dynamically linked and the rootfs ships no libc.so
-	$(CC) -static -Os -s -I $(LIMINE_DIR)/bin \
-		-o $(ROOTFS)/bin/limine $(LIMINE_DIR)/host/limine.c
-	install -m644 $(LIMINE_OUT)/limine-bios.sys \
-		$(LIMINE_OUT)/BOOTX64.EFI \
-		$(ROOTFS)/lib/limine/
+	install -m644 $(LIMINE_OUT)/BOOTX64.EFI $(ROOTFS)/lib/limine/
 ifneq ($(wildcard $(BZIMAGE)),)
 	mkdir -p $(ROOTFS)/boot
 	install -m644 $(BZIMAGE) $(ROOTFS)/boot/vmlinuz
@@ -511,12 +505,12 @@ $(LIMINE_STAGES):
 		echo "host dep missing: mtools (limine uefi-cd image)"; exit 1; }
 	@test -x $(LIMINE_DIR)/configure || { \
 		cd $(LIMINE_DIR) && ./bootstrap >/dev/null 2>&1; }
-	cd $(LIMINE_DIR) && ./configure --enable-bios --enable-bios-cd \
+	cd $(LIMINE_DIR) && ./configure --enable-bios-cd \
 		--enable-uefi-x86-64 --enable-uefi-cd
 	$(MAKE) -C $(LIMINE_DIR) -j$$(nproc) >/dev/null
 	mkdir -p $(LIMINE_OUT)
-	cp -f $(LIMINE_DIR)/bin/limine-bios.sys $(LIMINE_DIR)/bin/limine-bios-cd.bin \
-		$(LIMINE_DIR)/bin/limine-uefi-cd.bin $(LIMINE_DIR)/bin/limine \
+	cp -f $(LIMINE_DIR)/bin/limine-bios-cd.bin \
+		$(LIMINE_DIR)/bin/limine-uefi-cd.bin \
 		$(LIMINE_DIR)/common-uefi-x86-64/BOOTX64.EFI $(LIMINE_OUT)/
 
 # hybrid iso: boots on bios (el torito) and uefi (embedded efi image);
