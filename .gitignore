@@ -35,6 +35,4 @@ userland/wget/src/wget
 userland/wget/lib
 userland/wget/gnulib_po/Makefile.in
 userland/wget/gnulib_po/POTFILES
-userland/wget/tests
-userland/wget/fuzz
 userland/wget/po/Makefile.in
