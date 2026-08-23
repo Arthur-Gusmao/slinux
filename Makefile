@@ -33,17 +33,23 @@ SVC_DIR     := userland/svc
 SUP_DIR     := userland/sup
 CURL_DIR    := userland/curl
 LIBRESSL_DIR  := userland/libressl
+LIBRESSL_OPENBSD_DIR := userland/libressl-openbsd
 IPUTILS_DIR   := userland/iputils
 NET_TOOLS_DIR := userland/net-tools
 OPENRDATE_DIR := userland/openrdate
 MANDOC_DIR    := userland/mandoc
 WGET_DIR      := userland/wget
 FIRMWARE_DIR  := firmware
-LIMINE_TOOL    := /usr/bin/limine
+LIMINE_DIR     := userland/limine
+LIMINE_TOOL    := $(ROOT)/out/host/bin/limine
 ZLIB_SRCS  := adler32 compress crc32 deflate gzclose gzlib gzread gzwrite \
 	infback inffast inflate inftrees trees uncompr zutil
 
 .PHONY: iso all musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat smdev nldev svc sup curl zlib libressl iputils nettools rdate mandoc wget userland rootfs initramfs kernel clean help
+
+# the user may export MAKEFLAGS=-jN; top-level targets share state
+# (sysroot, rootfs), so serialize them — sub-makes still parallelize
+.NOTPARALLEL:
 
 all: initramfs
 
@@ -97,6 +103,8 @@ musl:
 	mkdir -p $(SYSROOT)/usr/lib/gcc/x86_64-linux-musl
 	cp -r $(GCC_MUSL_DIR) $(SYSROOT)/usr/lib/gcc/x86_64-linux-musl/
 	cp -f /usr/lib/libssp_nonshared.a $(SYSROOT)/usr/lib/
+	@test -f $(SYSROOT)/usr/lib/libgcc_s.a || \
+		ar rcs $(SYSROOT)/usr/lib/libgcc_s.a
 
 headers:
 	$(MAKE) -C kernel/linux INSTALL_HDR_PATH=$(SYSROOT)/usr headers_install
@@ -198,8 +206,6 @@ wpasupplicant: musl
 sfdisk: musl
 	@test -d $(UTIL_LINUX_DIR) || { \
 		echo "$(UTIL_LINUX_DIR) missing: add the submodule first"; exit 1; }
-	@test -f $(ROOT)/out/sysroot/usr/lib/libgcc_s.a || \
-		ar rcs $(SYSROOT)/usr/lib/libgcc_s.a
 	cd $(UTIL_LINUX_DIR) && PATH=/usr/bin:/bin autoreconf -fi >/dev/null 2>&1
 	cd $(UTIL_LINUX_DIR) && CC='$(CC)' ./configure --prefix=/usr \
 		--disable-shared --enable-static --enable-static-programs=sfdisk \
@@ -275,10 +281,16 @@ curl: musl bearssl
 	install -m755 $(CURL_DIR)/src/curl $(ROOTFS)/bin/curl
 
 libressl: musl
-	@test -d $(LIBRESSL_DIR) || { \
-		echo "$(LIBRESSL_DIR) missing: add the submodule first"; exit 1; }
-	@test -f $(SYSROOT)/usr/lib/libgcc_s.a || ar rcs $(SYSROOT)/usr/lib/libgcc_s.a
-	cd $(LIBRESSL_DIR) && autoreconf -fi >/dev/null 2>&1
+	@test -d $(LIBRESSL_DIR) -a -d $(LIBRESSL_OPENBSD_DIR) || { \
+		echo "libressl submodules missing:"; \
+		echo "  git submodule update --init $(LIBRESSL_DIR) $(LIBRESSL_OPENBSD_DIR)"; \
+		exit 1; }
+	@[ -e $(LIBRESSL_DIR)/openbsd ] || \
+		ln -sfn ../$(notdir $(LIBRESSL_OPENBSD_DIR)) $(LIBRESSL_DIR)/openbsd
+	git -C $(LIBRESSL_OPENBSD_DIR) checkout -q libressl-v4.3.2
+	git -C $(LIBRESSL_DIR) fetch -q --depth 1 origin \
+		refs/tags/v4.3.2:refs/tags/v4.3.2 2>/dev/null || true
+	cd $(LIBRESSL_DIR) && sh autogen.sh >/dev/null 2>&1
 	cd $(LIBRESSL_DIR) && CC='$(CC)' CFLAGS='-Os' ./configure \
 		--prefix=/usr --disable-shared --disable-tests
 	$(MAKE) -C $(LIBRESSL_DIR)/crypto -j$$(nproc)
@@ -456,10 +468,22 @@ endif
 		> $(ROOTFS)/etc/profile
 
 initramfs: rootfs
+	@command -v cpio >/dev/null || { echo "GNU cpio missing (busybox cpio silently produces a broken archive)"; exit 1; }
+	@cpio --version 2>/dev/null | grep -q 'GNU cpio' || { echo "GNU cpio missing (busybox cpio silently produces a broken archive)"; exit 1; }
 	find $(ROOTFS) -print0 | xargs -0 touch -h -d @$(SOURCE_DATE_EPOCH)
 	fakeroot -- sh -c 'chown -R 0:0 $(ROOTFS) && \
 		cd $(ROOTFS) && find . -print0 | LC_ALL=C sort -z | \
 		cpio --null -o -H newc --quiet --reproducible' | gzip -9n > $(INITRAMFS)
+
+$(LIMINE_TOOL):
+	@test -d $(LIMINE_DIR) || { \
+		echo "$(LIMINE_DIR) missing: add the submodule first"; exit 1; }
+	@test -x $(LIMINE_DIR)/configure || { \
+		cd $(LIMINE_DIR) && ./bootstrap >/dev/null 2>&1; }
+	cd $(LIMINE_DIR) && ./configure --enable-bios >/dev/null 2>&1
+	$(MAKE) -C $(LIMINE_DIR) -j$$(nproc) >/dev/null
+	mkdir -p $(ROOT)/out/host/bin
+	cp -f $(LIMINE_DIR)/bin/limine $@
 
 # hybrid iso: boots on bios (el torito) and uefi (embedded efi image);
 # dd-able to usb sticks as well. the live system ships slinux-install(8)
@@ -481,6 +505,12 @@ iso: initramfs $(LIMINE_TOOL)
 '    cmdline: pnpacpi=off i8042.nopnp i8042.nomux=1 console=ttyS0 console=tty0' \
 '    module_path: boot():/initramfs.cpio.gz' \
 		> out/iso/limine.conf
+	xorriso -as mkisofs -R -r -J -b limine-bios-cd.bin -no-emul-boot \
+		-boot-load-size 4 -boot-info-table \
+		-eltorito-alt-boot -e limine-uefi-cd.bin -no-emul-boot \
+		-V SLINUX -c boot.cat -o $(ISO) out/iso
+	$(LIMINE_TOOL) bios-install --force $(ISO)
+	@ls -la $(ISO)
 
 kernel:
 	cp kernel/config kernel/linux/.config
@@ -488,7 +518,7 @@ kernel:
 
 clean:
 	-@for d in $(INIT_DIRS) $(USER_DIRS) $(SHELL_DIR) $(VI_DIR) libc/musl \
-		$(BEARSSL_DIR) $(CURSES_DIR); do \
+		$(BEARSSL_DIR) $(CURSES_DIR) $(LIMINE_DIR); do \
 		[ -d $$d ] && $(MAKE) -C $$d clean; done
 	-@for d in $(LIBRESSL_DIR) $(NET_TOOLS_DIR) $(OPENRDATE_DIR); do \
 		[ -d $$d ] && $(MAKE) -C $$d distclean 2>/dev/null; done

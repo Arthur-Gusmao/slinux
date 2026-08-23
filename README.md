@@ -66,13 +66,14 @@ runtime archives. every target binary is statically linked.
 
 developed on alpine linux. you need:
 
-- `clang`, `llvm` (llvm-ar), `make`, `cpio`, `rsync`
-- `meson`, `ninja` (iputils)
+- `clang`, `llvm` (llvm-ar), `make`, `rsync`
+- `cpio` — the GNU one; busybox cpio silently produces a broken initramfs
+- `meson`, `ninja` (iputils), `nasm` + `autoconf`/`automake`/`libtool`
+  (libressl and limine bootstrap at build time)
 - `gcc` (runtime archives mirrored into the sysroot), `musl-cross` not
   required - clang targets the sysroot directly
 - `util-linux` (sfdisk, losetup, blkid), `dosfstools`, `e2fsprogs`
 - `xorriso` (iso), `fakeroot` (root-owned initramfs)
-- `limine` cli tool (bios-install step of `make iso`)
 - `doas` or sudo access for loop mounts during usb writing
 
 clone with submodules:
@@ -183,14 +184,16 @@ libc/musl           musl source (submodule)
 init/sinit          init (submodule)
 userland/           sbase, ubase, 9base, neatvi, zlib, bearssl,
                     netbsd-curses, sdhcp, e2fsprogs, dropbear, hostap,
-                    util-linux, dosfstools, libressl, iputils,
-                    net-tools, openrdate, wget (submodules)
+                    util-linux, dosfstools, libressl (+ libressl-openbsd
+                    source feed), iputils, net-tools, openrdate, wget,
+                    limine (submodules)
 userland/mandoc     vendored mandoc snapshot (man/apropos)
 patches/            musl compat shims (openrdate)
 shell/dash          dash (submodule)
 etc/                boot scripts (rc.init), motd, services, fstab
 bin/slinux-install  on-target installer (runs from the live system)
-bootloader/limine   vendored limine 12.6 binaries (efi, bios stages)
+bootloader/limine   vendored limine 12.6 binaries (efi, bios stages);
+                    the host `limine` cli builds from userland/limine
 firmware/           wifi firmware blobs
 install.sh          host-side disk/image installer
 Makefile            build orchestration
