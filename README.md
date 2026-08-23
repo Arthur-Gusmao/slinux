@@ -43,7 +43,7 @@ philosophy where practical: small tools, simple code, sane defaults.
 | svc | mirror | service framework (`svc -s/-k/-r/-a/-d/-l`, `service start/stop/restart`) |
 | sup | fork | hardcoded sudo; suid, rules + getpath fix baked into the fork |
 | curl 8.14.1 | upstream | static https client over BearSSL (last release with the bearssl backend) |
-| limine 12.6 | upstream | bootloader; bios+uefi binaries vendored in `bootloader/` |
+| limine 12.6 | upstream | bootloader (submodule); bios+uefi stages built from source |
 
 wifi firmware blobs live in `firmware/`: intel 9000/9560/ax201/ax210/ax211,
 realtek rtw88/rtw89 and mediatek mt7921 - matching the drivers built into
@@ -68,8 +68,8 @@ developed on alpine linux. you need:
 
 - `clang`, `llvm` (llvm-ar), `make`, `rsync`
 - `cpio` — the GNU one; busybox cpio silently produces a broken initramfs
-- `meson`, `ninja` (iputils), `nasm` + `autoconf`/`automake`/`libtool`
-  (libressl and limine bootstrap at build time)
+- `meson`, `ninja` (iputils), `nasm` + `mtools` + `autoconf`/`automake`/
+  `libtool` (libressl and limine bootstrap at build time)
 - `gcc` (runtime archives mirrored into the sysroot), `musl-cross` not
   required - clang targets the sysroot directly
 - `util-linux` (sfdisk, losetup, blkid), `dosfstools`, `e2fsprogs`
@@ -192,8 +192,6 @@ patches/            musl compat shims (openrdate)
 shell/dash          dash (submodule)
 etc/                boot scripts (rc.init), motd, services, fstab
 bin/slinux-install  on-target installer (runs from the live system)
-bootloader/limine   vendored limine 12.6 binaries (efi, bios stages);
-                    the host `limine` cli builds from userland/limine
 firmware/           wifi firmware blobs
 install.sh          host-side disk/image installer
 Makefile            build orchestration

@@ -438,8 +438,9 @@ rootfs: userland
 	cp -r firmware/. $(ROOTFS)/lib/firmware/
 	mkdir -p $(ROOTFS)/bin $(ROOTFS)/lib/limine
 	install -m755 bin/slinux-install $(ROOTFS)/bin/slinux-install
-	install -m644 bootloader/limine/BOOTX64.EFI \
-		bootloader/limine/limine-bios.sys $(ROOTFS)/lib/limine/
+	install -m644 $(LIMINE_DIR)/bin/limine-bios.sys \
+		$(LIMINE_DIR)/common-uefi-x86-64/BOOTX64.EFI \
+		$(ROOTFS)/lib/limine/
 ifneq ($(wildcard $(BZIMAGE)),)
 	mkdir -p $(ROOTFS)/boot
 	install -m644 $(BZIMAGE) $(ROOTFS)/boot/vmlinuz
@@ -489,22 +490,24 @@ $(LIMINE_TOOL):
 		echo "$(LIMINE_DIR) missing: add the submodule first"; exit 1; }
 	@test -x $(LIMINE_DIR)/configure || { \
 		cd $(LIMINE_DIR) && ./bootstrap >/dev/null 2>&1; }
-	cd $(LIMINE_DIR) && ./configure --enable-bios >/dev/null 2>&1
+	cd $(LIMINE_DIR) && ./configure --enable-bios --enable-bios-cd \
+		--enable-uefi-x86-64 --enable-uefi-cd >/dev/null 2>&1
 	$(MAKE) -C $(LIMINE_DIR) -j$$(nproc) >/dev/null
 	mkdir -p $(ROOT)/out/host/bin
 	cp -f $(LIMINE_DIR)/bin/limine $@
 
 # hybrid iso: boots on bios (el torito) and uefi (embedded efi image);
 # dd-able to usb sticks as well. the live system ships slinux-install(8)
-iso: kernel initramfs $(LIMINE_TOOL)
+iso: kernel $(LIMINE_TOOL) initramfs
 	@command -v xorriso >/dev/null || { echo "xorriso missing"; exit 1; }
 	rm -rf out/iso && mkdir -p out/iso/EFI/BOOT
 	cp $(BZIMAGE) out/iso/vmlinuz
 	cp $(INITRAMFS) out/iso/initramfs.cpio.gz
-	install -m644 bootloader/limine/limine-bios.sys \
-		bootloader/limine/limine-bios-cd.bin \
-		bootloader/limine/limine-uefi-cd.bin out/iso/
-	install -m644 bootloader/limine/BOOTX64.EFI out/iso/EFI/BOOT/
+	install -m644 $(LIMINE_DIR)/bin/limine-bios.sys \
+		$(LIMINE_DIR)/bin/limine-bios-cd.bin \
+		$(LIMINE_DIR)/bin/limine-uefi-cd.bin out/iso/
+	install -m644 $(LIMINE_DIR)/common-uefi-x86-64/BOOTX64.EFI \
+		out/iso/EFI/BOOT/
 	@printf '%s\n' \
 'timeout: 5' \
 '' \
@@ -514,9 +517,14 @@ iso: kernel initramfs $(LIMINE_TOOL)
 '    cmdline: pnpacpi=off i8042.nopnp i8042.nomux=1 console=ttyS0 console=tty0' \
 '    module_path: boot():/initramfs.cpio.gz' \
 		> out/iso/limine.conf
-	xorriso -as mkisofs -R -r -J -b limine-bios-cd.bin -no-emul-boot \
-		-boot-load-size 4 -boot-info-table \
+	xorriso -as mkisofs -R -r -J \
+		-b limine-bios-cd.bin -no-emul-boot -boot-load-size 4 \
+		-boot-info-table \
 		-eltorito-alt-boot -e limine-uefi-cd.bin -no-emul-boot \
+		-isohybrid-gpt-basdat -part_like_isohybrid \
+		-appended_part_as_gpt \
+		-append_partition 2 C12A7328-F81F-11D2-BA4B-00A0C93EC93B \
+			$(LIMINE_DIR)/bin/limine-uefi-cd.bin \
 		-V SLINUX -c boot.cat -o $(ISO) out/iso
 	$(LIMINE_TOOL) bios-install --force $(ISO)
 	@ls -la $(ISO)
