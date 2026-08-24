@@ -51,6 +51,12 @@ input::97:
 users::100:
 EOF
 
+# Shadow with empty password for root (live mode)
+cat > "$ROOTFS/etc/shadow" <<'EOF'
+root::0:0:99999:7:::
+EOF
+chmod 600 "$ROOTFS/etc/shadow"
+
 # ---- Firmware ----
 if [ -d "$SRC_ROOT/firmware" ]; then
     mkdir -p "$ROOTFS/lib/firmware"

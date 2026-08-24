@@ -1,7 +1,6 @@
 # slinux - minimal static Linux distribution
-# Meson build system (muon + samurai)
-# This wraps the existing Makefile for heavy lifting,
-# but uses Meson/ninja for dependency tracking and parallelism.
+# Meson build system (meson + samurai/ninja)
+# Self-contained, no Makefile needed.
 
 project('slinux', 'c',
   version: '0.1.0',
@@ -18,8 +17,7 @@ project('slinux', 'c',
 # =============================================================================
 # Cross-compilation toolchain
 # =============================================================================
-# The cross file defines the musl toolchain
-# Build with: muon setup build --cross-file=meson/cross/x86_64-linux-musl.ini
+# Build with: meson setup build --cross-file=meson/cross/x86_64-linux-musl.ini
 
 # =============================================================================
 # Global paths
@@ -30,6 +28,9 @@ iso_dir = join_paths(out_root, 'iso')
 initramfs_file = join_paths(out_root, 'slinux.cpio.gz')
 iso_file = join_paths(out_root, 'slinux.iso')
 src_root = meson.source_root()
+
+# Compiler from cross file
+cc = meson.get_compiler('c')
 
 # =============================================================================
 # Toolchain setup (musl sysroot)
@@ -56,7 +57,7 @@ limine_stamp = custom_target(
   output: 'limine.stamp',
   command: [
     find_program('sh'), '-c',
-    'make -C @0@ out/host/limine/limine-uefi-cd.bin out/host/limine/BOOTX64.EFI >/dev/null && mkdir -p @1@/limine && cp -f @0@/out/host/limine/limine-uefi-cd.bin @0@/out/host/limine/BOOTX64.EFI @1@/limine/'
+    'cd @0@/userland/limine && ./configure --enable-bios-cd --enable-uefi-x86_64 --enable-uefi-cd >/dev/null && make -j$(nproc) >/dev/null && mkdir -p @1@/limine && cp -f bin/limine-uefi-cd.bin bin/BOOTX64.EFI @1@/limine/'
       .format(src_root, out_root)
   ],
   build_by_default: true,
@@ -71,8 +72,8 @@ musl_stamp = custom_target(
   output: 'musl.stamp',
   command: [
     find_program('sh'), '-c',
-    'make -C @0@ musl >/dev/null'
-      .format(src_root)
+    'cd @0@/libc/musl && ./configure --prefix=/ --disable-shared --enable-static --disable-gcc-wrapper CC="clang" >/dev/null && make -j$(nproc) >/dev/null && make DESTDIR=@1@ install >/dev/null'
+      .format(src_root, join_paths(out_root, 'musl'))
   ],
   depends: [sysroot_stamp],
   build_by_default: true,
@@ -87,8 +88,8 @@ kernel_stamp = custom_target(
   output: 'kernel.stamp',
   command: [
     find_program('sh'), '-c',
-    'make -C @0@ kernel >/dev/null'
-      .format(src_root)
+    'cp @0@/kernel/config @1@/kernel/linux/.config && make -C @1@/kernel/linux -j$(nproc) >/dev/null'
+      .format(src_root, src_root)
   ],
   depends: musl_stamp,
   build_by_default: true,
@@ -103,8 +104,8 @@ userland_stamp = custom_target(
   output: 'userland.stamp',
   command: [
     find_program('sh'), '-c',
-    'make -C @0@ userland >/dev/null'
-      .format(src_root)
+    'cd @0@ && CC="clang --target=x86_64-linux-musl --sysroot=@1@" CFLAGS="-Os -pipe -fno-stack-protector" LDFLAGS="-static -s" make -j$(nproc) userland >/dev/null'
+      .format(src_root, join_paths(out_root, 'musl'))
   ],
   depends: musl_stamp,
   build_by_default: true,

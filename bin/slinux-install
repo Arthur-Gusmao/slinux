@@ -112,8 +112,13 @@ for d in bin etc lib sbin usr var share root; do
 	[ -d "$d" ] && SRCDIRS="$SRCDIRS $d"
 done
 # shellcheck disable=SC2086
-tar cf - $SRCDIRS | tar xf - -C /mnt/root
-# tar should preserve setuid but doesn't always; re-apply for safety
+# Use cp -a to preserve setuid/setgid bits
+for d in $SRCDIRS; do
+	cp -a "$d" /mnt/root/
+done
+# Ensure all files are owned by root (required for setuid binaries)
+# chown clears setuid, so re-apply it afterwards
+chown -R 0:0 /mnt/root
 chmod u+s /mnt/root/bin/doas 2>/dev/null
 mkdir -p /mnt/root/tmp /mnt/root/mnt /mnt/root/dev /mnt/root/proc /mnt/root/sys
 chmod 1777 /mnt/root/tmp

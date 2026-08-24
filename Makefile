@@ -274,6 +274,7 @@ doas: musl
 		LDFLAGS='-static -s'
 	mkdir -p $(ROOTFS)/bin $(ROOTFS)/etc
 	install -m4755 $(DOAS_DIR)/doas $(ROOTFS)/bin/doas
+	doas chown 0:0 $(ROOTFS)/bin/doas
 	install -m600 etc/doas.conf $(ROOTFS)/etc/doas.conf
 
 curl: musl bearssl
@@ -487,6 +488,7 @@ endif
 	$(ROOTFS)/bin/makewhatis $(ROOTFS)/usr/share/man >/dev/null
 	printf '#!/bin/sh\nPATH=$$PATH:/usr/plan9/bin\nexport PATH\n' \
 		> $(ROOTFS)/etc/profile
+	@doas chown -R 0:0 $(ROOTFS) && doas chmod u+s,g+s $(ROOTFS)/bin/doas 2>/dev/null || true
 
 initramfs: rootfs
 	@cpio --version 2>/dev/null | grep -q 'GNU cpio' || { echo "GNU cpio missing (busybox cpio silently produces a broken archive)"; exit 1; }
