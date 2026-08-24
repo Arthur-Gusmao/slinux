@@ -62,7 +62,7 @@ ZLIB_SRCS  := adler32 compress crc32 deflate gzclose gzlib gzread gzwrite \
 all: initramfs
 
 help:
-	@echo "slinux $(shell git describe --tags --always 2>/dev/null)"
+	@echo "slinux $(shell git describe --tags --always 2>/dev/null || echo "0.1.0")"
 	@echo
 	@echo "build targets:"
 	@echo "  make musl        build musl into out/sysroot"
@@ -104,8 +104,8 @@ musl:
 	@test -d libc/musl || { \
 		echo "libc/musl missing: add the submodule first"; exit 1; }
 	cd libc/musl && CC=clang ./configure --prefix=/usr --syslibdir=/lib
-	$(MAKE) -C libc/musl
-	$(MAKE) -C libc/musl DESTDIR=$(SYSROOT) install
+	$(MAKE) --no-print-directory -C libc/musl
+	$(MAKE) --no-print-directory -C libc/musl DESTDIR=$(SYSROOT) install
 	@test -n "$(GCC_MUSL_DIR)" || { \
 		echo "gcc runtime x86_64-linux-musl not found on host"; exit 1; }
 	mkdir -p $(SYSROOT)/usr/lib/gcc/x86_64-linux-musl
@@ -115,12 +115,12 @@ musl:
 		ar rcs $(SYSROOT)/usr/lib/libgcc_s.a
 
 headers:
-	$(MAKE) -C kernel/linux INSTALL_HDR_PATH=$(SYSROOT)/usr headers_install
+	$(MAKE) --no-print-directory -C kernel/linux INSTALL_HDR_PATH=$(SYSROOT)/usr headers_install
 
 bearssl: musl
 	@test -d $(BEARSSL_DIR) || { \
 		echo "$(BEARSSL_DIR) missing: add the submodule first"; exit 1; }
-	$(MAKE) -C $(BEARSSL_DIR) CC='$(CC)' AR=llvm-ar LD='$(CC)' \
+	$(MAKE) --no-print-directory -C $(BEARSSL_DIR) CC='$(CC)' AR=llvm-ar LD='$(CC)' \
 		CFLAGS='-W -Wall -Os' LDFLAGS='-s -static' DLL=no TESTS=no lib tools
 	mkdir -p $(SYSROOT)/usr/include $(ROOTFS)/bin
 	cp -f $(BEARSSL_DIR)/inc/bearssl.h $(BEARSSL_DIR)/inc/bearssl_*.h \
@@ -132,10 +132,10 @@ bearssl: musl
 curses: musl
 	@test -d $(CURSES_DIR) || { \
 		echo "$(CURSES_DIR) missing: add the submodule first"; exit 1; }
-	$(MAKE) -C $(CURSES_DIR) CC='$(CC)' AR=llvm-ar RANLIB=llvm-ranlib \
+	$(MAKE) --no-print-directory -C $(CURSES_DIR) CC='$(CC)' AR=llvm-ar RANLIB=llvm-ranlib \
 		CFLAGS='-Os' LDFLAGS='-s -static' LDFLAGS_HOST='-s -static' \
 		PREFIX=/usr DESTDIR=$(SYSROOT) all-static install-static
-	$(MAKE) -C $(CURSES_DIR) terminfo/terminfo.cdb
+	$(MAKE) --no-print-directory -C $(CURSES_DIR) terminfo/terminfo.cdb
 	mkdir -p $(ROOTFS)/bin $(ROOTFS)/usr/share
 	install -m755 $(SYSROOT)/usr/bin/tput $(SYSROOT)/usr/bin/tset \
 		$(SYSROOT)/usr/bin/tabs $(ROOTFS)/bin/
@@ -145,7 +145,7 @@ curses: musl
 sdhcp: musl
 	@test -d $(SDHCP_DIR) || { \
 		echo "$(SDHCP_DIR) missing: add the submodule first"; exit 1; }
-	$(MAKE) -C $(SDHCP_DIR) CC='$(CC)' LD='$(CC)' AR=llvm-ar \
+	$(MAKE) --no-print-directory -C $(SDHCP_DIR) CC='$(CC)' LD='$(CC)' AR=llvm-ar \
 		RANLIB=llvm-ranlib CPPFLAGS='-D_DEFAULT_SOURCE' \
 		CFLAGS='-Os' LDFLAGS='-s -static' all
 	mkdir -p $(ROOTFS)/bin
@@ -157,7 +157,7 @@ e2fsprogs: musl
 	cd $(E2FSPROGS_DIR) && CC='$(CC)' CFLAGS='-D_GNU_SOURCE -O2' ./configure --prefix=/usr \
 		--disable-nls --disable-shared --disable-e2scrub \
 		--disable-uuidd --disable-profile LDFLAGS='-s -static'
-	$(MAKE) -C $(E2FSPROGS_DIR) libs progs
+	$(MAKE) --no-print-directory -C $(E2FSPROGS_DIR) libs progs
 	mkdir -p $(ROOTFS)/bin $(ROOTFS)/etc
 	install -m755 $(E2FSPROGS_DIR)/misc/mke2fs $(E2FSPROGS_DIR)/misc/tune2fs \
 		$(E2FSPROGS_DIR)/misc/dumpe2fs $(E2FSPROGS_DIR)/misc/logsave \
@@ -183,7 +183,7 @@ dropbear: musl zlib
 		echo "$(DROPBEAR_DIR) missing: add the submodule first"; exit 1; }
 	cd $(DROPBEAR_DIR) && CC='$(CC)' ./configure --prefix=/usr \
 		CFLAGS='-Os' LDFLAGS='-s -static'
-	$(MAKE) -C $(DROPBEAR_DIR) MULTI=1
+	$(MAKE) --no-print-directory -C $(DROPBEAR_DIR) MULTI=1
 	mkdir -p $(ROOTFS)/bin
 	install -m755 $(DROPBEAR_DIR)/dropbearmulti $(ROOTFS)/bin/dropbearmulti
 	for t in dropbear dbclient dropbearkey scp; do \
@@ -204,8 +204,8 @@ wpasupplicant: musl
 		'CONFIG_INTERNAL_LIBTOMMATH=y' \
 		'CONFIG_CRYPTO_INTERNAL=y' \
 		> $(HOSTAP_DIR)/wpa_supplicant/.config
-	$(MAKE) -C $(HOSTAP_DIR)/wpa_supplicant clean >/dev/null 2>&1 || true
-	$(MAKE) -C $(HOSTAP_DIR)/wpa_supplicant CC='$(CC)' \
+	$(MAKE) --no-print-directory -C $(HOSTAP_DIR)/wpa_supplicant clean >/dev/null 2>&1 || true
+	$(MAKE) --no-print-directory -C $(HOSTAP_DIR)/wpa_supplicant CC='$(CC)' \
 		LDFLAGS='-s -static' BINDIR=/bin LIBDIR=/lib wpa_supplicant wpa_cli
 	mkdir -p $(ROOTFS)/bin
 	install -m755 $(HOSTAP_DIR)/wpa_supplicant/wpa_supplicant \
@@ -225,7 +225,7 @@ sfdisk: musl
 		--without-utempter \
 		--disable-all-programs --enable-fdisks=check --enable-libfdisk \
 		--enable-libblkid --enable-libuuid --enable-libsmartcols LDFLAGS='-s'
-	$(MAKE) -C $(UTIL_LINUX_DIR) sfdisk.static
+	$(MAKE) --no-print-directory -C $(UTIL_LINUX_DIR) sfdisk.static
 	mkdir -p $(ROOTFS)/bin
 	install -m755 $(UTIL_LINUX_DIR)/sfdisk.static $(ROOTFS)/bin/sfdisk
 
@@ -236,7 +236,7 @@ mkfsfat: musl
 		PATH=/usr/bin:/bin autoreconf -fi
 	cd $(DOSFSTOOLS_DIR) && CC='$(CC)' ./configure --prefix=/usr \
 		--disable-nls LDFLAGS='-static -s'
-	$(MAKE) -C $(DOSFSTOOLS_DIR)
+	$(MAKE) --no-print-directory -C $(DOSFSTOOLS_DIR)
 	mkdir -p $(ROOTFS)/bin
 	install -m755 $(DOSFSTOOLS_DIR)/src/mkfs.fat $(ROOTFS)/bin/mkfs.fat
 	install -m755 $(DOSFSTOOLS_DIR)/src/fsck.fat $(ROOTFS)/bin/fsck.fat
@@ -245,14 +245,14 @@ smdev: musl
 	@test -d $(SMDEV_DIR) || { \
 		echo "$(SMDEV_DIR) missing: add the submodule first"; exit 1; }
 	cp -f $(SMDEV_DIR)/config.def.h $(SMDEV_DIR)/config.h
-	$(MAKE) -C $(SMDEV_DIR) CC='$(CC)' LDFLAGS='-s -static'
+	$(MAKE) --no-print-directory -C $(SMDEV_DIR) CC='$(CC)' LDFLAGS='-s -static'
 	mkdir -p $(ROOTFS)/bin
 	install -m755 $(SMDEV_DIR)/smdev $(ROOTFS)/bin/smdev
 
 nldev: musl
 	@test -d $(NLDEV_DIR) || { \
 		echo "$(NLDEV_DIR) missing: add the submodule first"; exit 1; }
-	$(MAKE) -C $(NLDEV_DIR) CC='$(CC)' INCS='-I.' LIBS='-lc' \
+	$(MAKE) --no-print-directory -C $(NLDEV_DIR) CC='$(CC)' INCS='-I.' LIBS='-lc' \
 		LDFLAGS='-static -s'
 	mkdir -p $(ROOTFS)/bin
 	install -m755 $(NLDEV_DIR)/nldev $(ROOTFS)/bin/nldev
@@ -270,7 +270,7 @@ doas: musl
 	@test -d $(DOAS_DIR) || { \
 		echo "$(DOAS_DIR) missing: add the submodule first"; exit 1; }
 	cd $(DOAS_DIR) && ./configure --prefix=/usr --without-pam >/dev/null
-	$(MAKE) -C $(DOAS_DIR) CC='$(CC)' CFLAGS='-Os' \
+	$(MAKE) --no-print-directory -C $(DOAS_DIR) CC='$(CC)' CFLAGS='-Os' \
 		LDFLAGS='-static -s'
 	mkdir -p $(ROOTFS)/bin $(ROOTFS)/etc
 	install -m4755 $(DOAS_DIR)/doas $(ROOTFS)/bin/doas
@@ -290,7 +290,7 @@ curl: musl bearssl
 		--disable-ldaps --enable-optimize=-Os --disable-manual \
 		--disable-dependency-tracking --with-ca-bundle=/etc/ssl/cert.pem \
 		CC='$(CC)' LD='$(CC)' CFLAGS='-Os' LDFLAGS='-static'
-	$(MAKE) -C $(CURL_DIR) -j$$(nproc) LDFLAGS='-all-static'
+	$(MAKE) --no-print-directory -C $(CURL_DIR) -j$$(nproc) LDFLAGS='-all-static'
 	mkdir -p $(ROOTFS)/bin
 	install -m755 $(CURL_DIR)/src/curl $(ROOTFS)/bin/curl
 
@@ -312,8 +312,8 @@ libressl: musl
 		sh autogen.sh >/dev/null 2>&1
 	cd $(LIBRESSL_DIR) && CC='$(CC)' CFLAGS='-Os' ./configure \
 		--prefix=/usr --disable-shared --disable-tests
-	$(MAKE) -C $(LIBRESSL_DIR)/crypto -j$$(nproc)
-	$(MAKE) -C $(LIBRESSL_DIR)/ssl -j$$(nproc)
+	$(MAKE) --no-print-directory -C $(LIBRESSL_DIR)/crypto -j$$(nproc)
+	$(MAKE) --no-print-directory -C $(LIBRESSL_DIR)/ssl -j$$(nproc)
 	mkdir -p $(SYSROOT)/usr/include/openssl $(SYSROOT)/usr/lib/pkgconfig
 	cp -f $(LIBRESSL_DIR)/include/openssl/*.h $(SYSROOT)/usr/include/openssl/
 	cp -f $(LIBRESSL_DIR)/crypto/.libs/libcrypto.a \
@@ -345,7 +345,7 @@ nettools: musl headers
 		echo "$(NET_TOOLS_DIR) missing: add the submodule first"; exit 1; }
 	@awk 'BEGIN{split("n y y y n n n n n n n n n n y n n n n n n n n n n n n n n n n n n n n n y n n n n n n n",a," ");for(i=1;i<=44;i++)print a[i]}' | \
 		(cd $(NET_TOOLS_DIR) && bash ./configure.sh config.in) >/dev/null
-	$(MAKE) -C $(NET_TOOLS_DIR) CC='$(CC)' COPTS='-Os' LDFLAGS='-Llib -static -s'
+	$(MAKE) --no-print-directory -C $(NET_TOOLS_DIR) CC='$(CC)' COPTS='-Os' LDFLAGS='-Llib -static -s'
 	mkdir -p $(ROOTFS)/bin
 	install -m755 $(NET_TOOLS_DIR)/ifconfig $(NET_TOOLS_DIR)/route \
 		$(NET_TOOLS_DIR)/netstat $(NET_TOOLS_DIR)/arp \
@@ -358,7 +358,7 @@ rdate: musl
 	cd $(OPENRDATE_DIR) && CC='$(CC)' CFLAGS='-Os -D_GNU_SOURCE' \
 		CPPFLAGS='-I$(ROOT)/patches/openrdate-musl' ./configure \
 		--prefix=/usr LDFLAGS='-static -s'
-	$(MAKE) -C $(OPENRDATE_DIR)/src CFLAGS='-Os -D_GNU_SOURCE' \
+	$(MAKE) --no-print-directory -C $(OPENRDATE_DIR)/src CFLAGS='-Os -D_GNU_SOURCE' \
 		rdate_LDADD=librdate.a
 	mkdir -p $(ROOTFS)/bin
 	install -m755 $(OPENRDATE_DIR)/src/rdate $(ROOTFS)/bin/rdate
@@ -378,7 +378,7 @@ mandoc: musl zlib
 		'MANPATH_DEFAULT="/usr/share/man"' \
 		> $(MANDOC_DIR)/configure.local
 	cd $(MANDOC_DIR) && ./configure
-	$(MAKE) -C $(MANDOC_DIR) -j$$(nproc)
+	$(MAKE) --no-print-directory -C $(MANDOC_DIR) -j$$(nproc)
 	mkdir -p $(ROOTFS)/bin $(ROOTFS)/etc
 	install -m755 $(MANDOC_DIR)/mandoc $(MANDOC_DIR)/demandoc \
 		$(MANDOC_DIR)/soelim $(ROOTFS)/bin/
@@ -395,30 +395,30 @@ wget: musl zlib libressl
 		--sysconfdir=/etc \
 		--with-ssl=openssl --disable-nls --without-libpsl --disable-iri \
 		--disable-pcre2 --disable-pcre LDFLAGS='-static -s'
-	$(MAKE) -C $(WGET_DIR) ACLOCAL=: AUTOCONF=: AUTOHEADER=: \
+	$(MAKE) --no-print-directory -C $(WGET_DIR) ACLOCAL=: AUTOCONF=: AUTOHEADER=: \
 		AUTOMAKE=: MAKEINFO=:
 	mkdir -p $(ROOTFS)/bin
 	install -m755 $(WGET_DIR)/src/wget $(ROOTFS)/bin/wget
 
 userland: musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat smdev nldev svc doas curl libressl iputils nettools rdate mandoc wget
-	$(MAKE) -C $(INIT_DIRS) CC='$(CC)'
-	$(MAKE) -C $(INIT_DIRS) install DESTDIR=$(ROOTFS) PREFIX=/
+	$(MAKE) --no-print-directory -C $(INIT_DIRS) CC='$(CC)'
+	$(MAKE) --no-print-directory -C $(INIT_DIRS) install DESTDIR=$(ROOTFS) PREFIX=/
 	mv -f $(ROOTFS)/bin/sinit $(ROOTFS)/bin/init
 	@for d in userland/sbase userland/ubase; do \
-		$(MAKE) -C $$d CC='$(CC)' LDLIBS= LDFLAGS='-s -static' || exit; \
-		$(MAKE) -C $$d install DESTDIR=$(ROOTFS) PREFIX=/ || exit; \
+		$(MAKE) --no-print-directory -C $$d CC='$(CC)' LDLIBS= LDFLAGS='-s -static' || exit; \
+		$(MAKE) --no-print-directory -C $$d install DESTDIR=$(ROOTFS) PREFIX=/ || exit; \
 	done
-	$(MAKE) -C userland/9base CC='$(CC)' PREFIX=/usr/plan9
-	$(MAKE) -C userland/9base install DESTDIR=$(ROOTFS) PREFIX=/usr/plan9
+	$(MAKE) --no-print-directory -C userland/9base CC='$(CC)' PREFIX=/usr/plan9
+	$(MAKE) --no-print-directory -C userland/9base install DESTDIR=$(ROOTFS) PREFIX=/usr/plan9
 	cd $(SHELL_DIR) && test -x configure || \
 		PATH=/usr/bin:/bin autoreconf -fi
 	cd $(SHELL_DIR) && CC='$(CC)' LDFLAGS='-s -static' ./configure \
 		--prefix=/ --sysconfdir=/etc \
 		--build=x86_64-alpine-linux-musl --host=x86_64-linux-musl
-	$(MAKE) -C $(SHELL_DIR) LDFLAGS='-s -static'
-	$(MAKE) -C $(SHELL_DIR) install DESTDIR=$(ROOTFS)
-	$(MAKE) -C $(VI_DIR) clean
-	$(MAKE) -C $(VI_DIR) CC='$(CC)' CFLAGS='-Wall -O2 -Wno-format-truncation' LDFLAGS='-s -static'
+	$(MAKE) --no-print-directory -C $(SHELL_DIR) LDFLAGS='-s -static'
+	$(MAKE) --no-print-directory -C $(SHELL_DIR) install DESTDIR=$(ROOTFS)
+	$(MAKE) --no-print-directory -C $(VI_DIR) clean
+	$(MAKE) --no-print-directory -C $(VI_DIR) CC='$(CC)' CFLAGS='-Wall -O2 -Wno-format-truncation' LDFLAGS='-s -static'
 	install -m755 $(VI_DIR)/vi $(ROOTFS)/bin/vi
 	$(CC) -O2 -I$(SYSROOT)/usr/include -s -static -o $(ZLIB_DIR)/minigzip \
 		$(ZLIB_DIR)/test/minigzip.c -L$(SYSROOT)/usr/lib -lz
@@ -509,7 +509,7 @@ $(LIMINE_STAGES):
 		cd $(LIMINE_DIR) && ./bootstrap >/dev/null 2>&1; }
 	cd $(LIMINE_DIR) && ./configure --enable-bios-cd \
 		--enable-uefi-x86-64 --enable-uefi-cd
-	$(MAKE) -C $(LIMINE_DIR) -j$$(nproc) >/dev/null
+	$(MAKE) --no-print-directory -C $(LIMINE_DIR) -j$$(nproc) >/dev/null
 	mkdir -p $(LIMINE_OUT)
 	cp -f $(LIMINE_DIR)/bin/limine-bios-cd.bin \
 		$(LIMINE_DIR)/bin/limine-uefi-cd.bin \
@@ -544,19 +544,19 @@ iso: kernel $(LIMINE_STAGES) initramfs
 
 kernel:
 	cp kernel/config kernel/linux/.config
-	$(MAKE) -C kernel/linux olddefconfig all
+	$(MAKE) --no-print-directory -C kernel/linux olddefconfig all
 
 clean:
 	-@for d in $(INIT_DIRS) $(USER_DIRS) $(SHELL_DIR) $(VI_DIR) libc/musl \
 		$(BEARSSL_DIR) $(CURSES_DIR) $(LIMINE_DIR); do \
-		[ -d $$d ] && $(MAKE) -C $$d clean; done
+		[ -d $$d ] && $(MAKE) --no-print-directory -C $$d clean; done
 	-@for d in $(LIBRESSL_DIR) $(NET_TOOLS_DIR) $(OPENRDATE_DIR); do \
-		[ -d $$d ] && $(MAKE) -C $$d distclean 2>/dev/null; done
-	-[ -d $(MANDOC_DIR) ] && { $(MAKE) -C $(MANDOC_DIR) clean 2>/dev/null; \
+		[ -d $$d ] && $(MAKE) --no-print-directory -C $$d distclean 2>/dev/null; done
+	-[ -d $(MANDOC_DIR) ] && { $(MAKE) --no-print-directory -C $(MANDOC_DIR) clean 2>/dev/null; \
 		rm -f $(MANDOC_DIR)/config.h $(MANDOC_DIR)/config.log \
 			$(MANDOC_DIR)/config.h.old $(MANDOC_DIR)/config.log.old \
 			$(MANDOC_DIR)/configure.local $(MANDOC_DIR)/Makefile.local; }
-	-[ -d $(WGET_DIR) ] && { $(MAKE) -C $(WGET_DIR) clean 2>/dev/null; \
+	-[ -d $(WGET_DIR) ] && { $(MAKE) --no-print-directory -C $(WGET_DIR) clean 2>/dev/null; \
 		rm -f $(WGET_DIR)/config.h $(WGET_DIR)/config.log \
 			$(WGET_DIR)/config.status $(WGET_DIR)/Makefile \
 			$(WGET_DIR)/*/Makefile $(WGET_DIR)/po/POTFILES \

@@ -57,7 +57,7 @@ limine_stamp = custom_target(
   output: 'limine.stamp',
   command: [
     find_program('sh'), '-c',
-    'cd @0@/userland/limine && ./configure --enable-bios-cd --enable-uefi-x86_64 --enable-uefi-cd >/dev/null && make -j$(nproc) >/dev/null && mkdir -p @1@/limine && cp -f bin/limine-uefi-cd.bin bin/BOOTX64.EFI @1@/limine/'
+    'cd @0@/userland/limine && ./configure --enable-uefi-x86_64 --enable-uefi-cd >/dev/null 2>&1 && make -j$(nproc) >/dev/null 2>&1 && mkdir -p @1@/limine && cp -f bin/limine-uefi-cd.bin bin/BOOTX64.EFI @1@/limine/'
       .format(src_root, out_root)
   ],
   build_by_default: true,
@@ -72,7 +72,7 @@ musl_stamp = custom_target(
   output: 'musl.stamp',
   command: [
     find_program('sh'), '-c',
-    'cd @0@/libc/musl && ./configure --prefix=/ --disable-shared --enable-static --disable-gcc-wrapper CC="clang" >/dev/null && make -j$(nproc) >/dev/null && make DESTDIR=@1@ install >/dev/null'
+    'cd @0@/libc/musl && ./configure --prefix=/ --disable-shared --enable-static --disable-gcc-wrapper CC="clang" >/dev/null 2>&1 && make -j$(nproc) >/dev/null 2>&1 && make DESTDIR=@1@ install >/dev/null 2>&1'
       .format(src_root, join_paths(out_root, 'musl'))
   ],
   depends: [sysroot_stamp],
@@ -88,7 +88,7 @@ kernel_stamp = custom_target(
   output: 'kernel.stamp',
   command: [
     find_program('sh'), '-c',
-    'cp @0@/kernel/t480-config @1@/kernel/linux/.config && make -C @1@/kernel/linux olddefconfig >/dev/null 2>&1 && make -C @1@/kernel/linux -j$(nproc) >/dev/null'
+    'cp @0@/kernel/t480-config @1@/kernel/linux/.config && make -C @1@/kernel/linux olddefconfig >/dev/null 2>&1 && make -C @1@/kernel/linux -j$(nproc) >/dev/null 2>&1'
       .format(src_root, src_root)
   ],
   depends: musl_stamp,
@@ -104,7 +104,7 @@ userland_stamp = custom_target(
   output: 'userland.stamp',
   command: [
     find_program('sh'), '-c',
-    'cd @0@ && CC="clang --target=x86_64-linux-musl --sysroot=@1@" CFLAGS="-Os -pipe -fno-stack-protector" LDFLAGS="-static -s" make -j$(nproc) userland >/dev/null'
+    'cd @0@ && MAKEFLAGS="--no-print-directory -j$(nproc)" CC="clang --target=x86_64-linux-musl --sysroot=@1@" CFLAGS="-Os -pipe -fno-stack-protector" LDFLAGS="-static -s" make userland >/dev/null 2>&1'
       .format(src_root, join_paths(out_root, 'musl'))
   ],
   depends: musl_stamp,
