@@ -88,7 +88,7 @@ kernel_stamp = custom_target(
   output: 'kernel.stamp',
   command: [
     find_program('sh'), '-c',
-    'cp @0@/kernel/config @1@/kernel/linux/.config && make -C @1@/kernel/linux -j$(nproc) >/dev/null'
+    'cp @0@/kernel/config @1@/kernel/linux/.config && make -C @1@/kernel/linux olddefconfig >/dev/null 2>&1 && make -C @1@/kernel/linux -j$(nproc) >/dev/null'
       .format(src_root, src_root)
   ],
   depends: musl_stamp,

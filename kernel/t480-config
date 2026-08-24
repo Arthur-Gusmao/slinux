@@ -263,9 +263,6 @@ CONFIG_PCIEPORTBUS=y
 # =============================================================================
 CONFIG_VIRTIO=y
 CONFIG_VIRTIO_MENU=y
-CONFIG_VIRTIO_PCI=y
-CONFIG_VIRTIO_BLK=y
-CONFIG_VIRTIO_NET=y
 CONFIG_VIRTIO_CONSOLE=y
 CONFIG_VIRTIO_INPUT=y
 
@@ -300,22 +297,10 @@ CONFIG_EFI_VARS=y
 CONFIG_EFI_VARS_PSTORE=y
 CONFIG_EFI_RUNTIME_WRAPPERS=y
 CONFIG_EFI_RUNTIME_MAP=y
-CONFIG_CMDLINE_BOOL=n
-CONFIG_CMDLINE="pnpacpi=off i8042.nopnp i8042.nomux=1 console=ttyS0 console=tty0"
-
-# =============================================================================
-# Initramfs
-# =============================================================================
-CONFIG_BLK_DEV_INITRD=y
-CONFIG_RD_GZIP=y
-CONFIG_RD_XZ=y
 
 # =============================================================================
 # IPC
 # =============================================================================
-CONFIG_SYSVIPC=y
-CONFIG_POSIX_MQUEUE=y
-CONFIG_CROSS_MEMORY_ATTACH=y
 
 # =============================================================================
 # Executable formats
@@ -359,7 +344,6 @@ CONFIG_ZLIB_INFLATE=y
 CONFIG_ZLIB_DEFLATE=y
 CONFIG_XZ_DEC=y
 CONFIG_XZ_DEC_X86=y
-CONFIG_XXHASH=y
 
 # =============================================================================
 # Disable bloat
