@@ -44,6 +44,7 @@ NET_TOOLS_DIR := userland/net-tools
 OPENRDATE_DIR := userland/openrdate
 MANDOC_DIR    := userland/mandoc
 WGET_DIR      := userland/wget
+GIT_DIR       := userland/git
 MKSH_DIR      := userland/mksh
 FIRMWARE_DIR  := firmware
 LIMINE_DIR     := userland/limine
@@ -604,3 +605,18 @@ mksh: musl
 
 
 
+
+# Git SCM - cross-compiled using pre-generated config.mak.autogen
+git: musl zlib libressl curl
+	@test -d $(GIT_DIR) || { echo "$(GIT_DIR) missing: add the submodule first"; exit 1; }
+	cp $(GIT_DIR)/config.mak.autogen.cross $(GIT_DIR)/config.mak.autogen
+	$(MAKE) --no-print-directory -C $(GIT_DIR) all \
+		CC="clang --target=x86_64-linux-musl --sysroot=/home/aw/slinux/out/sysroot" \
+		CFLAGS="-Os -pipe -DNO_REGEX=NeedsStartEnd" \
+		LDFLAGS="-static -s" \
+		AR=ar RANLIB=ranlib
+	install -m755 $(GIT_DIR)/git $(ROOTFS)/bin/git
+	install -m755 $(GIT_DIR)/git-shell $(ROOTFS)/bin/git-shell
+	install -m755 $(GIT_DIR)/git-upload-pack $(ROOTFS)/bin/git-upload-pack
+	install -m755 $(GIT_DIR)/git-receive-pack $(ROOTFS)/bin/git-receive-pack
+	install -m644 $(GIT_DIR)/Documentation/git*.1 $(ROOTFS)/usr/share/man/man1/ 2>/dev/null || true
