@@ -25,6 +25,21 @@ else
     exit 1
 fi
 
+# Copy additional files from source that aren't in staging
+cp -a "$SRC_ROOT/etc/rc.init" "$ROOTFS/bin/" 2>/dev/null || true
+cp -a "$SRC_ROOT/etc/rc.shutdown" "$ROOTFS/bin/" 2>/dev/null || true
+cp -a "$SRC_ROOT/bin/slinux-install" "$ROOTFS/bin/" 2>/dev/null || true
+chmod 755 "$ROOTFS/bin/rc.init" "$ROOTFS/bin/rc.shutdown" "$ROOTFS/bin/slinux-install" 2>/dev/null || true
+
+# Create sh symlink to dash
+ln -sf dash "$ROOTFS/bin/sh" 2>/dev/null || true
+
+# Fix doas ownership and setuid (host filesystem may not preserve ownership)
+if [ -f "$ROOTFS/bin/doas" ]; then
+    doas chown 0:0 "$ROOTFS/bin/doas" 2>/dev/null || true
+    doas chmod 4755 "$ROOTFS/bin/doas" 2>/dev/null || true
+fi
+
 # ---- Device nodes (static) ----
 mkdir -p "$ROOTFS/dev"
 for node in console null zero random urandom tty tty1 ttyS0 ptmx; do
@@ -33,11 +48,11 @@ done
 
 # ---- Essential /etc files ----
 mkdir -p "$ROOTFS/etc"
-cat > "$ROOTFS/etc/passwd" <<'EOF'
+cat > "$ROOTFS/etc/passwd" <<'EOP'
 root::0:0:root:/root:/bin/sh
-EOF
+EOP
 
-cat > "$ROOTFS/etc/group" <<'EOF'
+cat > "$ROOTFS/etc/group" <<'EOP'
 root::0:
 wheel::10:
 tty::5:
@@ -49,19 +64,30 @@ audio::29:
 video::44:
 input::97:
 users::100:
-EOF
+EOP
 
 # Shadow with empty password for root (live mode)
-cat > "$ROOTFS/etc/shadow" <<'EOF'
+cat > "$ROOTFS/etc/shadow" <<'EOP'
 root::0:0:99999:7:::
-EOF
+EOP
 chmod 600 "$ROOTFS/etc/shadow"
+
+# hostname
+echo "slinux" > "$ROOTFS/etc/hostname"
+
+# motd
+cat > "$ROOTFS/etc/motd" <<'EOP'
+Welcome to slinux
+EOP
 
 # ---- Firmware ----
 if [ -d "$SRC_ROOT/firmware" ]; then
     mkdir -p "$ROOTFS/lib/firmware"
     cp -r "$SRC_ROOT/firmware"/* "$ROOTFS/lib/firmware/"
 fi
+
+# ---- svc directories ----
+mkdir -p "$ROOTFS/bin/svc.d/run" "$ROOTFS/bin/svc.d/avail" "$ROOTFS/bin/svc.d/default" 2>/dev/null || true
 
 # ---- Set permissions ----
 chmod 1777 "$ROOTFS/tmp"

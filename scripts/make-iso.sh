@@ -32,7 +32,7 @@ timeout: 5
 /slinux (live)
     protocol: linux
     path: boot():/vmlinuz
-    cmdline: pnpacpi=off i8042.nopnp i8042.nomux=1 console=ttyS0 console=tty0
+    cmdline: pnpacpi=off i8042.nopnp i8042.nomux=1 console=ttyS0 console=tty0 rdinit=/bin/init
     module_path: boot():/initramfs.cpio.gz
 EOF
 

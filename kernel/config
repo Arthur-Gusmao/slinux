@@ -31,7 +31,7 @@ CONFIG_EFI_VARS=y
 CONFIG_EFI_VARS_PSTORE=y
 CONFIG_EFI_RUNTIME_WRAPPERS=y
 CONFIG_EFI_RUNTIME_MAP=y
-CONFIG_CMDLINE_BOOL=y
+CONFIG_CMDLINE_BOOL=n
 CONFIG_CMDLINE="pnpacpi=off i8042.nopnp i8042.nomux=1 console=ttyS0 console=tty0"
 
 # =============================================================================
@@ -300,7 +300,7 @@ CONFIG_EFI_VARS=y
 CONFIG_EFI_VARS_PSTORE=y
 CONFIG_EFI_RUNTIME_WRAPPERS=y
 CONFIG_EFI_RUNTIME_MAP=y
-CONFIG_CMDLINE_BOOL=y
+CONFIG_CMDLINE_BOOL=n
 CONFIG_CMDLINE="pnpacpi=off i8042.nopnp i8042.nomux=1 console=ttyS0 console=tty0"
 
 # =============================================================================
