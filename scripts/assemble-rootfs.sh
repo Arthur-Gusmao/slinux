@@ -38,13 +38,21 @@ if [ -f "$SRC_ROOT/kernel/linux/arch/x86/boot/bzImage" ]; then
     cp "$SRC_ROOT/kernel/linux/arch/x86/boot/bzImage" "$ROOTFS/boot/vmlinuz"
 fi
 
-# Build cryptpw if not present (simple static binary for password hashing)
+# Build cryptpw if not present
 if [ ! -f "$ROOTFS/bin/cryptpw" ]; then
     if [ -f "$SRC_ROOT/tools/cryptpw.c" ]; then
         echo "Building cryptpw..."
-        "$CC" -static -Os -s -o "$ROOTFS/bin/cryptpw" "$SRC_ROOT/tools/cryptpw.c" 2>/dev/null || \
         cc -static -Os -s -o "$ROOTFS/bin/cryptpw" "$SRC_ROOT/tools/cryptpw.c" 2>/dev/null || \
         echo "WARNING: failed to build cryptpw"
+    fi
+fi
+
+# Build getpass if not present
+if [ ! -f "$ROOTFS/bin/getpass" ]; then
+    if [ -f "$SRC_ROOT/tools/getpass.c" ]; then
+        echo "Building getpass..."
+        cc -static -Os -s -o "$ROOTFS/bin/getpass" "$SRC_ROOT/tools/getpass.c" 2>/dev/null || \
+        echo "WARNING: failed to build getpass"
     fi
 fi
 
