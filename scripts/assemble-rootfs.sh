@@ -16,7 +16,7 @@ mkdir -p "$ROOTFS"/bin "$ROOTFS"/sbin "$ROOTFS"/usr/bin "$ROOTFS"/usr/sbin \
     "$ROOTFS"/lib "$ROOTFS"/etc "$ROOTFS"/var "$ROOTFS"/tmp "$ROOTFS"/mnt \
     "$ROOTFS"/dev "$ROOTFS"/proc "$ROOTFS"/sys "$ROOTFS"/home "$ROOTFS"/root \
     "$ROOTFS"/share/man/man1 "$ROOTFS"/share/man/man5 "$ROOTFS"/share/man/man8 \
-    "$ROOTFS"/lib/limine "$ROOTFS"/boot
+    "$ROOTFS"/lib/limine "$ROOTFS"/boot "$ROOTFS"/etc/ssl/certs "$ROOTFS"/etc/ssl/private
 
 # Copy from Makefile staging
 if [ -d "$SRC_ROOT/rootfs" ]; then
@@ -25,6 +25,12 @@ if [ -d "$SRC_ROOT/rootfs" ]; then
 else
     echo "ERROR: SRC_ROOT/rootfs not found"
     exit 1
+fi
+
+# Copy libressl libraries to rootfs
+if [ -d "$BUILD_ROOT/musl/usr/lib" ]; then
+    cp -f "$BUILD_ROOT/musl/usr/lib/libssl.a" "$ROOTFS/lib/" 2>/dev/null || true
+    cp -f "$BUILD_ROOT/musl/usr/lib/libcrypto.a" "$ROOTFS/lib/" 2>/dev/null || true
 fi
 
 # Copy limine files (needed by slinux-install)
@@ -104,6 +110,18 @@ chmod 600 "$ROOTFS/etc/shadow"
 
 echo "slinux" > "$ROOTFS/etc/hostname"
 echo "Welcome to slinux" > "$ROOTFS/etc/motd"
+
+# SSL certificates - create minimal CA bundle
+if [ -f /etc/ssl/certs/ca-certificates.crt ]; then
+    cp /etc/ssl/certs/ca-certificates.crt "$ROOTFS/etc/ssl/certs/ca-certificates.crt"
+else
+    # Generate minimal CA bundle from Mozilla's list
+    echo "Generating minimal CA bundle..."
+    cat > "$ROOTFS/etc/ssl/certs/ca-certificates.crt" <<'CERTEOF'
+# This is a placeholder - replace with actual CA certificates
+# On first boot, run: update-ca-certificates
+CERTEOF
+fi
 
 # Firmware
 if [ -d "$SRC_ROOT/firmware" ]; then

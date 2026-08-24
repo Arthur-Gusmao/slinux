@@ -44,6 +44,7 @@ NET_TOOLS_DIR := userland/net-tools
 OPENRDATE_DIR := userland/openrdate
 MANDOC_DIR    := userland/mandoc
 WGET_DIR      := userland/wget
+MKSH_DIR      := userland/mksh
 FIRMWARE_DIR  := firmware
 LIMINE_DIR     := userland/limine
 LIMINE_OUT     := $(ROOT)/out/host/limine
@@ -53,7 +54,7 @@ LIMINE_STAGES  := $(LIMINE_OUT)/limine-bios-cd.bin \
 ZLIB_SRCS  := adler32 compress crc32 deflate gzclose gzlib gzread gzwrite \
 	infback inffast inflate inftrees trees uncompr zutil
 
-.PHONY: iso all musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat smdev nldev svc doas curl zlib libressl iputils nettools rdate mandoc wget userland rootfs initramfs kernel clean help
+.PHONY: iso all musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat smdev nldev svc doas curl zlib libressl iputils nettools rdate mandoc wget mksh userland rootfs initramfs kernel clean help
 
 # the user may export MAKEFLAGS=-jN; top-level targets share state
 # (sysroot, rootfs), so serialize them — sub-makes still parallelize
@@ -88,6 +89,7 @@ help:
 	@echo "  make rdate       build rdate (sntp, static)"
 	@echo "  make mandoc      build man/apropos/whatis/makewhatis"
 	@echo "  make wget        build GNU wget (static, LibreSSL TLS)"
+	@echo "  make mksh        build mksh (user shell)"
 	@echo "  make rootfs      populate rootfs/ with binaries and etc files"
 	@echo "  make initramfs   pack rootfs/ into slinux.cpio.gz"
 	@echo "  make kernel      build the linux kernel"
@@ -400,7 +402,8 @@ wget: musl zlib libressl
 	mkdir -p $(ROOTFS)/bin
 	install -m755 $(WGET_DIR)/src/wget $(ROOTFS)/bin/wget
 
-userland: musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat smdev nldev svc doas curl libressl iputils nettools rdate mandoc wget
+
+userland: musl headers bearssl curses sdhcp e2fsprogs dropbear wpasupplicant sfdisk mkfsfat smdev nldev svc doas curl libressl iputils nettools rdate mandoc wget mksh
 	$(MAKE) --no-print-directory -C $(INIT_DIRS) CC='$(CC)'
 	$(MAKE) --no-print-directory -C $(INIT_DIRS) install DESTDIR=$(ROOTFS) PREFIX=/
 	mv -f $(ROOTFS)/bin/sinit $(ROOTFS)/bin/init
@@ -564,3 +567,40 @@ clean:
 	-rm -rf $(IPUTILS_DIR)/build
 	rm -f $(ZLIB_DIR)/*.o $(ZLIB_DIR)/libz.a $(ZLIB_DIR)/minigzip
 	rm -rf out rootfs slinux.cpio.gz
+
+git: musl zlib libressl curl
+	@test -d $(GIT_DIR) || { \
+		echo "$(GIT_DIR) missing: add the submodule first"; exit 1; }
+	cd $(GIT_DIR) && CC='$(CC)' CFLAGS='-Os -pipe' LDFLAGS='-static -s' \
+		./configure --prefix=/ --without-tcltk --without-iconv --with-libpcre2 \
+		--with-zlib --with-openssl --with-curl --with-libpcre CFLAGS="-Os -pipe -DNO_REGEX=NeedsStartEnd" \
+		--disable-pthreads --disable-symbolic-links \
+		--build=x86_64-alpine-linux-musl --host=x86_64-linux-musl
+	$(MAKE) --no-print-directory -C $(GIT_DIR) all
+	install -m755 $(GIT_DIR)/git $(ROOTFS)/bin/git
+	install -m755 $(GIT_DIR)/git-shell $(ROOTFS)/bin/git-shell
+	install -m755 $(GIT_DIR)/git-upload-pack $(ROOTFS)/bin/git-upload-pack
+	install -m755 $(GIT_DIR)/git-receive-pack $(ROOTFS)/bin/git-receive-pack
+	install -m644 $(GIT_DIR)/Documentation/git*.1 $(ROOTFS)/usr/share/man/man1/ 2>/dev/null || true
+
+
+# mksh - user shell (MirBSD Korn Shell)
+mksh: musl
+	@test -d $(MKSH_DIR) || { echo "$(MKSH_DIR) missing: add the submodule first"; exit 1; }
+	cd $(MKSH_DIR) && CC='$(CC)' CFLAGS='-Os -pipe -DMKSH_UNLIMITED -DMKSH_NO_SIGNAL' LDFLAGS='-static -s' \
+		./Build.sh -r
+	install -m755 $(MKSH_DIR)/mksh $(ROOTFS)/bin/mksh
+	ln -sf mksh $(ROOTFS)/bin/oksh 2>/dev/null || true
+	install -m644 $(MKSH_DIR)/mksh.1 $(ROOTFS)/usr/share/man/man1/mksh.1 2>/dev/null || true
+
+
+
+
+
+
+
+
+
+
+
+

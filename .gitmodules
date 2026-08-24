@@ -101,3 +101,15 @@
 [submodule "userland/opendoas"]
 	path = userland/opendoas
 	url = https://github.com/Duncaen/OpenDoas.git
+[submodule "userland/git"]
+	path = userland/git
+	url = https://github.com/git/git.git
+[submodule "userland/shadow"]
+	path = userland/shadow
+	url = https://github.com/shadow-maint/shadow.git
+[submodule "userland/mksh"]
+	path = userland/mksh
+	url = https://github.com/MirBSD/mksh.git
+[submodule "userland/tar"]
+	path = userland/tar
+	url = https://git.savannah.gnu.org/git/tar.git
