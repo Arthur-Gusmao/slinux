@@ -27,7 +27,7 @@ rootfs_dir = join_paths(out_root, 'rootfs')
 iso_dir = join_paths(out_root, 'iso')
 initramfs_file = join_paths(out_root, 'slinux.cpio.gz')
 iso_file = join_paths(out_root, 'slinux.iso')
-src_root = meson.source_root()
+src_root = meson.project_source_root()
 
 # Compiler from cross file
 cc = meson.get_compiler('c')

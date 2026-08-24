@@ -12,11 +12,13 @@ echo "Assembling rootfs at $ROOTFS"
 
 # Clean and create directories
 rm -rf "$ROOTFS"
-mkdir -p "$ROOTFS"/bin "$ROOTFS"/sbin "$ROOTFS"/usr/bin "$ROOTFS"/usr/sbin "$ROOTFS"/lib "$ROOTFS"/etc "$ROOTFS"/var "$ROOTFS"/tmp "$ROOTFS"/mnt "$ROOTFS"/dev "$ROOTFS"/proc "$ROOTFS"/sys "$ROOTFS"/home "$ROOTFS"/root "$ROOTFS"/share/man/man1 "$ROOTFS"/share/man/man5 "$ROOTFS"/share/man/man8
-echo "Created rootfs directories: $(ls -la $ROOTFS)"
+mkdir -p "$ROOTFS"/bin "$ROOTFS"/sbin "$ROOTFS"/usr/bin "$ROOTFS"/usr/sbin \
+    "$ROOTFS"/lib "$ROOTFS"/etc "$ROOTFS"/var "$ROOTFS"/tmp "$ROOTFS"/mnt \
+    "$ROOTFS"/dev "$ROOTFS"/proc "$ROOTFS"/sys "$ROOTFS"/home "$ROOTFS"/root \
+    "$ROOTFS"/share/man/man1 "$ROOTFS"/share/man/man5 "$ROOTFS"/share/man/man8 \
+    "$ROOTFS"/lib/limine "$ROOTFS"/boot
 
-# The Makefile builds and installs everything to SRC_ROOT/rootfs/
-# Copy from there
+# Copy from Makefile staging
 if [ -d "$SRC_ROOT/rootfs" ]; then
     echo "Copying from Makefile rootfs staging..."
     cp -a "$SRC_ROOT/rootfs"/* "$ROOTFS/"
@@ -25,28 +27,49 @@ else
     exit 1
 fi
 
-# Copy additional files from source that aren't in staging
+# Copy limine files (needed by slinux-install)
+if [ -d "$BUILD_ROOT/limine" ]; then
+    cp "$BUILD_ROOT/limine/BOOTX64.EFI" "$ROOTFS/lib/limine/"
+    cp "$BUILD_ROOT/limine/limine-uefi-cd.bin" "$ROOTFS/lib/limine/"
+fi
+
+# Copy kernel to /boot (needed by slinux-install)
+if [ -f "$SRC_ROOT/kernel/linux/arch/x86/boot/bzImage" ]; then
+    cp "$SRC_ROOT/kernel/linux/arch/x86/boot/bzImage" "$ROOTFS/boot/vmlinuz"
+fi
+
+# Build cryptpw if not present (simple static binary for password hashing)
+if [ ! -f "$ROOTFS/bin/cryptpw" ]; then
+    if [ -f "$SRC_ROOT/tools/cryptpw.c" ]; then
+        echo "Building cryptpw..."
+        "$CC" -static -Os -s -o "$ROOTFS/bin/cryptpw" "$SRC_ROOT/tools/cryptpw.c" 2>/dev/null || \
+        cc -static -Os -s -o "$ROOTFS/bin/cryptpw" "$SRC_ROOT/tools/cryptpw.c" 2>/dev/null || \
+        echo "WARNING: failed to build cryptpw"
+    fi
+fi
+
+# Copy additional files
 cp -a "$SRC_ROOT/etc/rc.init" "$ROOTFS/bin/" 2>/dev/null || true
 cp -a "$SRC_ROOT/etc/rc.shutdown" "$ROOTFS/bin/" 2>/dev/null || true
 cp -a "$SRC_ROOT/bin/slinux-install" "$ROOTFS/bin/" 2>/dev/null || true
 chmod 755 "$ROOTFS/bin/rc.init" "$ROOTFS/bin/rc.shutdown" "$ROOTFS/bin/slinux-install" 2>/dev/null || true
 
-# Create sh symlink to dash
+# Create sh symlink
 ln -sf dash "$ROOTFS/bin/sh" 2>/dev/null || true
 
-# Fix doas ownership and setuid (host filesystem may not preserve ownership)
+# Fix doas setuid
 if [ -f "$ROOTFS/bin/doas" ]; then
     doas chown 0:0 "$ROOTFS/bin/doas" 2>/dev/null || true
     doas chmod 4755 "$ROOTFS/bin/doas" 2>/dev/null || true
 fi
 
-# ---- Device nodes (static) ----
+# Device nodes
 mkdir -p "$ROOTFS/dev"
 for node in console null zero random urandom tty tty1 ttyS0 ptmx; do
     [ -e "$ROOTFS/dev/$node" ] || mknod -m 666 "$ROOTFS/dev/$node" c 1 3 2>/dev/null || true
 done
 
-# ---- Essential /etc files ----
+# Essential /etc files
 mkdir -p "$ROOTFS/etc"
 cat > "$ROOTFS/etc/passwd" <<'EOP'
 root::0:0:root:/root:/bin/sh
@@ -66,34 +89,26 @@ input::97:
 users::100:
 EOP
 
-# Shadow with empty password for root (live mode)
 cat > "$ROOTFS/etc/shadow" <<'EOP'
 root::0:0:99999:7:::
 EOP
 chmod 600 "$ROOTFS/etc/shadow"
 
-# hostname
 echo "slinux" > "$ROOTFS/etc/hostname"
+echo "Welcome to slinux" > "$ROOTFS/etc/motd"
 
-# motd
-cat > "$ROOTFS/etc/motd" <<'EOP'
-Welcome to slinux
-EOP
-
-# ---- Firmware ----
+# Firmware
 if [ -d "$SRC_ROOT/firmware" ]; then
     mkdir -p "$ROOTFS/lib/firmware"
     cp -r "$SRC_ROOT/firmware"/* "$ROOTFS/lib/firmware/"
 fi
 
-# ---- svc directories ----
+# svc directories
 mkdir -p "$ROOTFS/bin/svc.d/run" "$ROOTFS/bin/svc.d/avail" "$ROOTFS/bin/svc.d/default" 2>/dev/null || true
 
-# ---- Set permissions ----
+# Permissions
 chmod 1777 "$ROOTFS/tmp"
 chmod 700 "$ROOTFS/root"
 
-# ---- Touch stamp file ----
 touch "$BUILD_ROOT/rootfs.stamp"
-
 echo "Rootfs assembled at $ROOTFS"
